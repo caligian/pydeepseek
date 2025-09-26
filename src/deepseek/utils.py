@@ -26,7 +26,7 @@ def print_info(msg: str) -> None:
 
 
 def print_warn(msg: str) -> None:
-    cprint(msg, 'orange')
+    cprint(msg, 'yellow')
 
 
 def print_msg(msg: str) -> None:
@@ -34,7 +34,7 @@ def print_msg(msg: str) -> None:
 
 
 def print_prompt(prompt: str) -> None:
-    cprint(prompt, "fuschia", end='')
+    cprint(prompt, "green", end='')
 
 
 def print_ok(s: str) -> None:
@@ -63,18 +63,23 @@ def create_response(
     stream: bool=True,
     max_tokens: int | None=None,
     reasoner: bool=False,
-) -> openai.OpenAI | ChatCompletion:
+) -> openai.OpenAI | ChatCompletion | None:
     reasoner = "deepseek-chat" if not reasoner else "deepseek-reasoner"
     max_tokens = 500 if not max_tokens else max_tokens
-    return client.chat.completions.create(
-        model=reasoner,
-        messages=[
-            {"role": "system", "content": "Try to use emacs org-mode format if possible otherwise, use markdown format"},
-            {"role": "user", "content": question}
-        ],
-        stream=stream,
-        max_tokens=max_tokens
-    )
+    try:
+        return client.chat.completions.create(
+            model=reasoner,
+            messages=[
+                {"role": "system", "content": "Try to use emacs editor org-mode format for headings and items if possible otherwise, use markdown format"},
+                {"role": "user", "content": question}
+            ],
+            stream=stream,
+            max_tokens=max_tokens
+        )
+    except KeyboardInterrupt: 
+        return
+    except EOFError:
+        return
 
 def read_input(prompt: str | None, client=None) -> str | None:
     if not prompt:

@@ -22,7 +22,7 @@ TR = {
 COMMANDS = {
     'h': 0, 'help': 0,
     'q': 0, 'quit': 0,
-    'gget': 1, 'get': 1,
+    'gget': 1, 'get': 1, 'state': 0,
     '?': "?", '??': "?", '???': '?',
     '#': "?", '##': "?", '###': '?', 
     'history': "?", 'fzf_history': "?", "menu_history": "?",
@@ -78,20 +78,24 @@ HELP = '''`/{query}`
     'menu_json_history'    | `###` [pattern]
         Menu select questions and print matched response  
 
-    `gset {variable} {value}`
-        Set global variable where {variable} can be any of:
+    `gset {variable} {value}` | `set {variable} {value}`
+        Set global variable (gset) or variable for next query (set)
+        where {variable} can be any of:
         `stream`
-            Set streaming output for all queries
+            Set streaming output
         `max_tokens`
-            Default: 1000. Maximum tokens for all queries
+            Default: 1000.
 
-    `set {variable} {value}` 
-        Set variable for next query where {variable} can be any of:
+    `gget {variable}` | `get {variable} {value}`
+        Set global variable (gset) or variable for next query (set)
+        where {variable} can be any of:
         `stream`
-            Set streaming output for next query
+            Set streaming output
         `max_tokens`
-            Maximum tokens for next query
+            Default: 1000.
 
+    `state`
+        Print the values of all variables for the shell
 '''
 
 def parse_ask(s: str) -> dict[str, str | bool | None] | None:
@@ -218,7 +222,7 @@ def parse_command(s: str) -> dict[str, str | bool | None]:
         res['msg'] = 'No command passed'
         return res
 
-    if a := alias.get(s[0]):
+    if a := ALIAS.get(s[0]):
         res['command'] = a
     else:
         res['command'] = s[0]
@@ -266,33 +270,34 @@ def parse(s: str) -> dict[str, str | bool | None]:
     else:
         return res
 
+
+def get_value(var: str, variables: dict) -> bool | str | None:
+    value = None
+
+    if variables.get(var) == None:
+        value = VARIABLES[var][1]
+    else:
+        value = variables[var]
+        variables[var] = None
+
+    if TR.get(value):
+        return TR[value]
+    else:
+        return value
+
+def make_kwargs(kwargs: dict, variables: dict) -> None:
+    for k in VARIABLES.keys():
+        if kwargs.get(k) == None:
+            kwargs[k] = get_value(k, variables)
+
 def shell(client: Client) -> None:
     variables = {}
-
-    def get_value(var: str) -> bool | str | None:
-        value = None
-
-        if variables.get(var) == None:
-            value = VARIABLES[var][1]
-        else:
-            value = variables[var]
-            variables[var] = None
-
-        if TR.get(value):
-            return TR[value]
-        else:
-            return value
-
-    def make_kwargs(kwargs: dict) -> None:
-        for k in VARIABLES.keys():
-            if kwargs.get(k) == None:
-                kwargs[k] = get_value(k)
 
     print("Type in `help` to display help. Ctrl-D will close the session")
     print()
 
     while True:
-        cprint("deepseek % ", "cyan", end='')
+        print_prompt("deepseek % ")
         inp = None
         
         try:
@@ -314,18 +319,16 @@ def shell(client: Client) -> None:
         cmd = parse(inp)
 
         if not cmd['ok']:
-            cprint(cmd['msg'], 'red')
+            print_warn(cmd['msg'])
             continue
 
         match cmd['type']:
             case 'function':
                 if cmd['function'] == 'ask':
                     kwargs = cmd['kwargs'].copy()
-                    print('gotten:', kwargs)
-                    make_kwargs(kwargs)
+                    make_kwargs(kwargs, variables)
                     kwargs['stdout_only'] = False
                     kwargs['stdout'] = True
-                    print(kwargs)
                     client.ask(*cmd['args'], **kwargs)
             case 'global_variable':
                 validator, value = VARIABLES[cmd['variable']]
@@ -338,13 +341,22 @@ def shell(client: Client) -> None:
                         client.close()
                         return
                     case 'help':
-                        print(HELP)
+                        print_info(HELP)
+                    case 'state':
+                        print_info("Global variables:")
+                        for k, v in VARIABLES.items():
+                            print(f'  {k} = {v[1]}')
+
+                        if len(variables) > 0:
+                            print_info("\nVariables for next query")
+                            for k, v in variables.items():
+                                print(f'  {k} = {v}')
                     case 'get':
-                        value = variables.get(cmd['args'])
-                        if value != None: print(value)
+                        if value := variables.get(cmd['args']):
+                            print(repr(value))
                     case 'gget':
-                        value = global_variables.get(cmd['args'])
-                        if value != None: print(value)
+                        if value := VARIABLES.get(cmd['args']):
+                            print(repr(value[1]))
                     case 'json_history':
                         client.history.print(
                             pattern=cmd['args'],

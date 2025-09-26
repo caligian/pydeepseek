@@ -6,7 +6,7 @@ import sys
 import os
 
 from .config import Config
-from .utils import create_client, create_response
+from .utils import *
 from .stream import Stream
 from .history import History
 
@@ -37,9 +37,13 @@ class Client:
             max_tokens=max_tokens,
             reasoner=reasoner
         )
-        stream = Stream(stream)
 
+        if not stream:
+            return
+
+        stream = Stream(stream)
         out = None
+
         if stdout_only:
             stream.print()
         elif stdout:

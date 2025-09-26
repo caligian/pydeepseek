@@ -1,5 +1,6 @@
 import openai 
 import sys
+from termcolor import cprint
 
 ChatCompletion = openai.types.chat.chat_completion.ChatCompletion
 
@@ -46,7 +47,7 @@ class Stream:
         try:
             for word in self.stream():
                 if word == None: break
-                if stdout: print(word, end='')
+                if stdout: cprint(word, 'green', end='')
                 if not stdout_only: words.append(word)
             if stdout or stdout_only: print()
         except KeyboardInterrupt:

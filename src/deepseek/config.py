@@ -4,7 +4,9 @@ import os
 import datetime
 import json
 import openai 
+
 from termcolor import cprint
+from .utils import *
 
 pjoin = os.path.join
 HOME = os.getenv('HOME')
@@ -32,7 +34,7 @@ class Config:
         self.read()
 
     def read(self) -> None:
-        cprint(f"Reading config from {self.file}", 'cyan')
+        print_info(f"Reading config from {self.file}")
 
         with open(self.file) as fh:
             text = fh.read().strip()
@@ -46,22 +48,21 @@ class Config:
                     line = [x.strip() for x in line]
 
                     if len(line) != 2:
-                        cprint(f"Parsing error on line {i}:\nExpected form: <key> = <value>, got {line}", 'red')
+                        print_warn(f"Parsing error on line {i}:\nExpected form: <key> = <value>, got {line}")
                         sys.exit(1)
 
                     var, value = line
                     if not re.search(r'[a-z_]+', var):
-                        cprint(f"Parsing error on line {i}:\n<key> can only contain lowercase letters and underscore", 'red')
+                        print_warn(f"Parsing error on line {i}:\n<key> can only contain lowercase letters and underscore")
                         sys.exit(1)
                     elif not self._valid_keys.get(var):
-                        cprint(f"Parsing error on line {i}:\nExpected any of {(', ').join(list(self._valid_keys.keys()))}, got {var}", 'red')
+                        print_warn(f"Parsing error on line {i}:\nExpected any of {(', ').join(list(self._valid_keys.keys()))}, got {var}")
                         sys.exit(1)
                     else:
                         match var:
                             case 'api_key_file':
                                 if not os.path.isfile(value):
-                                    cprint(f"Invalid API key path: {value}", "red")
-                                    sys.exit(1)
+                                    error(f"Invalid API key path: {value}", "red")
                             case 'write_on_append':
                                 if value == 'off' or value == 'false' or value == 'False' or value == '0':
                                     value = False
