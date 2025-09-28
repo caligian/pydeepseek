@@ -28,6 +28,9 @@ class Config:
             'write_on_append': True,
         }
 
+        if not os.path.isdir(self.history_dir):
+            os.makedirs(self.history_dir)
+
         if not os.path.isfile(self.file):
             self.write()
 
@@ -76,5 +79,3 @@ class Config:
             for k in self._valid_keys.keys():
                 v = getattr(self, k)
                 fh.write(f'{k} = {v}\n')
-
-

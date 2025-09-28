@@ -53,6 +53,7 @@ class History:
         menu: bool=False,
         fzf: bool=True,
         json: bool=False,
+        clipboard: bool=False,
     ) -> list[str] | None:
         questions = list(self.history.items())
         found = questions

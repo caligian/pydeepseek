@@ -6,6 +6,7 @@ import readline
 
 from pyfzf import FzfPrompt
 from termcolor import cprint
+from pyperclip import copy
 
 
 fzf_prompt = FzfPrompt().prompt
@@ -65,7 +66,7 @@ def create_response(
     reasoner: bool=False,
 ) -> openai.OpenAI | ChatCompletion | None:
     reasoner = "deepseek-chat" if not reasoner else "deepseek-reasoner"
-    max_tokens = 500 if not max_tokens else max_tokens
+    max_tokens = 1500 if not max_tokens else max_tokens
     try:
         return client.chat.completions.create(
             model=reasoner,
@@ -194,8 +195,11 @@ def fzf_select(choices: list[str]) -> list[str]:
 
 def parse_int(s: str) -> tuple[int | None, str | None]:
     if re.search(r'^[0-9]+$', s):
-        return (int(s), None)
+        return (True, None, int(s))
     else:
-        return (None, f'Expected an integer, got {s}')
+        return (None, f'Expected an integer, got {s}', s)
 
 
+def write_clip(s: str) -> str:
+    copy(s)
+    return s

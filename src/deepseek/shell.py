@@ -12,7 +12,8 @@ from .config import Config
 
 VARIABLES = {
     'stream': (['on', 'off'], 'on'),
-    'max_tokens': (parse_int, 1000)
+    'clipboard': (['on', 'off'], 'off'),
+    'max_tokens': (parse_int, 1000),
 }
 
 TR = {
@@ -43,6 +44,9 @@ ALIAS = {
 HELP = '''`/{query}`
     Process query
 
+`@/query`
+    Copy results of query output
+
 `!/{query}`
     Process query with deep reasoner
 
@@ -63,20 +67,27 @@ HELP = '''`/{query}`
     `history`              | `?`   [pattern]
         Pretty print history
 
-    'fzf_history'          | `??`  [pattern]
-        Fzf select questions and print matched response  
+    'fzf_history'          | `??[@]`  [pattern]
+        Fzf select questions and print matched response
+        If suffixed with '@', copy the selected query
 
-    'menu_history'         | `###` [pattern]
+    'menu_history'         | `###[@]` [pattern]
         Menu select questions and print matched response  
+        If suffixed with '@', copy the selected query
 
     `json_history`         | `#`   [pattern]
         Print history in json format
 
-    'fzf_json_history'     | `##`  [pattern]
+    'fzf_json_history'     | `##[@]`  [pattern]
         Fzf select questions and print matched response  
+        If suffixed with '@', copy the selected query
 
-    'menu_json_history'    | `###` [pattern]
+    'menu_json_history'    | `###[@]` [pattern]
         Menu select questions and print matched response  
+        If suffixed with '@', copy the selected query
+
+    `ask {query}`
+        Ask query
 
     `gset {variable} {value}` | `set {variable} {value}`
         Set global variable (gset) or variable for next query (set)
@@ -183,7 +194,7 @@ def parse_set_var(s: str) -> dict[str, str | bool | None] | None:
                 res['msg'] = f'Could not match pattern `{required}`'
                 return res
         elif isinstance(required, Callable):
-            value, msg = required(value)
+            ok, msg, value = required(value)
             if not value:
                 res['msg'] = f'{required}({value}) did not return True' if not msg else msg
                 return res
