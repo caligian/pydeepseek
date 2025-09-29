@@ -8,7 +8,7 @@ from src.deepseek.utils import *
 
 NO_INPUT = "No input provided"
 
-class CommandFlag:
+class CommandFlagParser:
     def __init__(
         self,
         command: str,
@@ -85,7 +85,7 @@ class CommandFlag:
             cprint(f'{indent}{self.help}')
 
 
-class Command:
+class CommandParser:
     def __init__(
         self,
         name: str,
@@ -99,9 +99,9 @@ class Command:
         self.name = name
         self.nargs = nargs
         self.validator = validator
-        self.flags: dict[str, CommandFlag] = {}
-        self._flags_aliases: dict[str, ComamndFlag] = {}
-        self._flags: dict[str, CommandFlag] = {}
+        self.flags: dict[str, CommandFlagParser] = {}
+        self._flags_aliases: dict[str, ComamndFlagParser] = {}
+        self._flags: dict[str, CommandFlagParser] = {}
         self.args: list[str] = []
 
     def reset(self) -> None:
@@ -139,16 +139,23 @@ class Command:
         metavar = format_metavar(self.nargs)
         cprint(f' {metavar}', color)
 
-    def print(self, color: str='green', indent: int=2) -> None:
+    def print(self, color: str='green') -> None:
         self.inline_print(color, indent=0)
+        p_aliases = False
+        p_flags = False
+
+        if len(self.aliases) > 0:
+            cprint("  Aliases:\n    ", (', ').join(self.aliases), 'blue')
+            p_aliases = True
 
         if len(self._flags) > 0:
+            if p_aliases: print()
             flags = list(self._flags.values())
             cprint("  Valid flags:", 'blue')
             for flag in flags: flag.print(indent=4)
 
         if self.help:
-            if len(self._flags) > 0: print()
+            if p_aliases or p_flags: print()
             help = self.help.split("\n")
             help = [x for x in help if len(x) > 0]
             help = [f"  {x}" for x in help]
@@ -378,9 +385,9 @@ class Command:
 
 class Parser:
     def __init__(self) -> None:
-        self.commands = {}
-        self._commands = {}
-        self._commands_aliases: dict[str, bool] = {}
+        self.commands: dict[str, CommandParser] = {}
+        self._commands: dict[str, CommandParser] = {}
+        self._commands_aliases: dict[str, CommandParser] = {}
 
     def reset(self) -> None:
         for cmd in self.commands.values(): cmd.reset()
@@ -412,7 +419,7 @@ class Parser:
         if aliases:
             for a in aliases:
                 self.commands[a] = self.commands[name]
-                self._commands_aliases[a] = True
+                self._commands_aliases[a] = self.commands[name]
 
         return self.commands[name]
 
