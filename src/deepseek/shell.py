@@ -109,34 +109,6 @@ HELP = '''`/{query}`
         Print the values of all variables for the shell
 '''
 
-def read_input(prompt: str='(deepseek) % ') -> str | None:
-    def readline(prompt: str) -> str | None:
-        cprint(prompt, 'red', end='')
-        value = input()
-        value = value.strip()
-
-        if len(value) == 0:
-            return
-        else:
-            return value
-
-    def read(prompt: str, results: list[str]) -> list[str]:
-        line = readline(prompt)
-        if not line:
-            return ('\n').join(results)
-        elif line[-1] == '\\':
-            results.append(line[:-1])
-            return read('> ', results)
-        else:
-            results.append(line)
-            return ('\n').join(results)
-
-    out = read(prompt, [])
-    if len(out) == 0:
-        return
-    else:
-        return out
-
 
 def parse_ask(s: str) -> dict[str, str | bool | None] | None:
     if s[0] == '/' or s[:2] == '!/' or s[:3] == '!@/' or s[:2] == '@/':

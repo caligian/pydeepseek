@@ -4,7 +4,7 @@ from copy import copy
 from typing import Callable
 from collections import namedtuple
 from termcolor import cprint
-from src.deepseek.utils import *
+from .utils import *
 
 NO_INPUT = "No input provided"
 
@@ -145,7 +145,7 @@ class CommandParser:
         p_flags = False
 
         if len(self.aliases) > 0:
-            cprint("  Aliases:\n    ", (', ').join(self.aliases), 'blue')
+            cprint(f"  Aliases:\n    {(', ').join(self.aliases)}", 'blue')
             p_aliases = True
 
         if len(self._flags) > 0:
@@ -170,7 +170,7 @@ class CommandParser:
         aliases: list[str] | None=None,
         help: str | None=None
     ) -> Result:
-        self.flags[name] = CommandFlag(
+        self.flags[name] = CommandFlagParser(
             self.name,
             name,
             nargs,
@@ -188,7 +188,7 @@ class CommandParser:
 
         return self._flags[name]
 
-    def __getitem__(self, flag: str) -> CommandFlag | None:
+    def __getitem__(self, flag: str) -> CommandFlagParser | None:
         if flag := self.flags.get(flag):
             return flag
 
@@ -392,7 +392,7 @@ class Parser:
     def reset(self) -> None:
         for cmd in self.commands.values(): cmd.reset()
 
-    def __getitem__(self, command: str) -> None | Command:
+    def __getitem__(self, command: str) -> None | CommandParser:
         return self.commands.get(command)
 
     def get_command(self, command: str) -> Result:
@@ -412,8 +412,8 @@ class Parser:
         validator: Validator | None=None,
         aliases: list[str] | None=None,
         help: str | None=None,
-    ) -> Command:
-        self.commands[name] = Command(name, nargs, validator, aliases=aliases, help=help)
+    ) -> CommandParser:
+        self.commands[name] = CommandParser(name, nargs, validator, aliases=aliases, help=help)
         self._commands[name] = self.commands[name]
 
         if aliases:
@@ -430,7 +430,7 @@ class Parser:
         validator: Validator | None=None,
         aliases: list[str] | None=None,
         help: str | None=None
-    ) -> Command:
+    ) -> CommandParser:
         return self.add_command(name, nargs, validator, aliases=aliases, help=help)
 
     def print(self) -> None:
@@ -444,7 +444,6 @@ class Parser:
         if len(tokens) == 0:
             return Result(False, "No input provided", line)
 
-        tokens = tokens.value
         cmd = tokens[0]
         cmds = self.commands
 

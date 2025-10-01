@@ -14,11 +14,6 @@ class Client:
     def __init__(self, config: Config) -> None:
         self.client = create_client(config.api_key_file)
         self.config = config
-        self.history = History(
-            config.history_dir,
-            write_on_append=config.write_on_append,
-            client=self
-        )
 
     def ask(
         self,
