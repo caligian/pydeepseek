@@ -11,15 +11,15 @@ from .stream import Stream
 from .history import History
 
 class Client:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, history: History) -> None:
         self.client = create_client(config.api_key_file)
         self.config = config
+        self.history = history
 
     def ask(
         self,
         question: str,
         stdout: bool=False,
-        stdout_only: bool=False,
         stream: bool=True,
         reasoner: bool=False,
         max_tokens: int | None=None,
@@ -39,18 +39,15 @@ class Client:
         stream = Stream(stream)
         out = None
 
-        if stdout_only:
-            stream.print()
-        elif stdout:
-            out = stream.print(capture=True)
+        if stdout:
+            out = stream.print()
         else:
             out = stream.read()
 
         if clipboard:
             write_clip(out)
 
-        if not stdout_only:
-            self.history.append(question, out)
+        self.history.append(question, out)
 
         return out
 

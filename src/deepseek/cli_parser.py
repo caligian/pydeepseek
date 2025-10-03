@@ -38,32 +38,38 @@ class CommandFlagParser:
         self.prefix = f'{self.command}.{self.name}'
 
     def reset(self) -> None:
-        self.value = self.default
+        self.value = None
 
     def extract(self) -> str:
         value = self.value
-        self.reset()
-
+        self.value = None
         return value
 
     def validate(self, value: str, put: bool=False) -> Result:
-        res = Result(True, None, value)
+        nargs_checked = False
+        res = check_nargs([value], self.nargs, self.prefix)
+
+        if not res.ok:
+            return res
+        else:
+            nargs_checked = True
 
         if self.validator:
             res = validate(value, self.validator, self.prefix)
-
-        if not res.ok:
-            return res
-
-        res = check_nargs([value], self.nargs, self.prefix)
-        if not res.ok:
-            return res
+            if not res.ok:
+                return res
+            else:
+                res = res.value
+        elif nargs_checked:
+            res = res[0]
 
         if put:
-            print_msg(f'{self.prefix}: Setting value to `{value}`')
-            self.value = res.value
+            self.value = res
 
-        return res
+        return Result(True, None, res)
+
+    def set(self, value: str) -> Result:
+        return self.validate(value, put=True)
 
     def toggle(self, prefix: str='') -> Result:
         if not self.value:
@@ -144,7 +150,7 @@ class CommandParser:
         p_aliases = False
         p_flags = False
 
-        if len(self.aliases) > 0:
+        if self.aliases and len(self.aliases) > 0:
             cprint(f"  Aliases:\n    {(', ').join(self.aliases)}", 'blue')
             p_aliases = True
 
@@ -306,7 +312,7 @@ class CommandParser:
             current, next_ = pos[i], pos[i+1]
             current_ind, next_ind = current[0], next_[0]
             current, next_ = current[1], next_[1]
-            _args = args[current_ind+1:next_ind-1]
+            _args = args[current_ind+1:next_ind]
             prefix = f'{self.name}.{current.name}'
             res = check_nargs(_args, current.nargs, prefix)
 

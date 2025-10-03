@@ -1,9 +1,13 @@
+import sys
+
 from dataclasses import dataclass, field
-# from .cli_parser import *
+# from .cli parser import *
 # from .client import Client
 # from .config import Config
 # from .history import History
 #
+from src.deepseek.input import Prompt
+from src.deepseek.utils import *
 from src.deepseek.cli_parser import *
 from src.deepseek.client import Client
 from src.deepseek.config import Config
@@ -61,10 +65,11 @@ class Variable:
 class CLI:
     def __init__(self, **config: dict[str, str]) -> None:
         # Will be cleared after being read each time
+        self.prompt = Prompt()
         self.variables: dict[str, Variable] = {}
         self.config = Config(**config)
-        self.client = Client(self.config)
         self.history = History(self.config.history_dir)
+        self.client = Client(self.config, self.history)
         self.parser = Parser()
         self._variables: dict[str, Variable] = {}
         self._variables_aliases: dict[str, Variable] = {}
@@ -126,12 +131,22 @@ class CLI:
         for cmd in command:
             self.commands[command.name] = command
 
-    def ask(self, question: str, **kwargs) -> str | None:
-        kwargs.update(self.read_variables())
-        return self.client.ask(question, **kwargs)
+    def ask(self, words: list[str], **kwargs) -> str | None:
+        for k, v in self.read_variables().items():
+            if kwargs.get(k) == None: kwargs[k] = v
+
+        kwargs['stdout'] = True
+
+        return self.client.ask((" ").join(words), **kwargs)
 
     def readline(self) -> str | None:
-        inp = read_input()
+        inp = ''
+        try:
+            inp = self.prompt.input()
+        except EOFError:
+            self.client.close()
+            sys.exit(0)
+
         if not inp:
             return self.readline()
         else:
@@ -176,8 +191,23 @@ class CLI:
         if not res.ok:
             print_error(res.msg)
 
-    def next(self) -> Result:
-        res = self.parser.parse(self.readline())
+    def start(self) -> None:
+        self.next()
+
+    def next(self) -> None:
+        cmds = self.parser._commands.values()
+        self.prompt.add_command_completer(*cmds)
+        res = str
+
+        try:
+            res = self.readline()
+        except EOFError:
+            sys.stdout.flush()
+            self.client.close()
+            cprint("Goodbye.", 'yellow')
+            sys.exit(0)
+
+        res: Result = self.parser.parse(res)
         if not res.ok:
             print_error(res.msg)
             return self.next()
@@ -186,7 +216,7 @@ class CLI:
         match cmd:
             case 'ask':
                 kwargs.update(self.read_variables())
-                self.ask(args[0], **kwargs)
+                self.ask(args, **kwargs)
             case 'history':
                 pattern = args[0] if len(args) > 0 else '.+'
                 self.history.print(pattern, **kwargs)
@@ -204,6 +234,7 @@ class CLI:
                 self.help()
             case 'quit':
                 self.client.close()
+                cprint('Goodbye.', 'yellow')
                 return
 
         self.next()
@@ -247,7 +278,7 @@ add_cmd('defaults', aliases=['d'], nargs=0)
 ask = add_cmd('ask', aliases=['/'], nargs='+')
 ask.add_flag('clipboard', nargs=0, aliases=['clip', 'c'])
 ask.add_flag('stream', nargs=0, aliases=['s'])
-ask.add_flag('max_tokens', nargs=1, aliases=['tokens', 't'])
+ask.add_flag('max_tokens', nargs=1, aliases=['tokens', 't'], validator=parse_int)
 
 history = add_cmd('history', nargs='?', aliases=['?'])
 history.add_flag('fzf', nargs=0, default=True, aliases=['f'])
@@ -256,4 +287,4 @@ history.add_flag('clipboard', nargs=0, default=False, aliases=['clip', 'c'])
 history.add_flag('query_only', nargs=0, default=False, aliases=['q'])
 history.add_flag('response_only', nargs=0, default=False, aliases=['r'])
 
-cli.next()
+cli.start()

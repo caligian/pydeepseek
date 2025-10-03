@@ -27,29 +27,20 @@ class Stream:
 
     def read(
         self,
-        stdout: bool=False,
-        stdout_only: bool=False
+        stdout: bool=False
     ) -> str | None:
-        if stdout_only:
-            stdout = True
-
         if self.text:
-            if stdout_only:
-                print(self.text)
-                return
-            elif stdout:
-                print(self.text)
+            print(self.text)
+            return self.text
 
-            return stdout
-
-        words = [] if not stdout_only else None
+        words = []
 
         try:
             for word in self.stream():
                 if word == None: break
                 if stdout: cprint(word, 'green', end='')
-                if not stdout_only: words.append(word)
-            if stdout or stdout_only: print()
+                words.append(word)
+            if stdout: print()
         except KeyboardInterrupt:
             if words:
                 self.text = ("").join(words)
@@ -57,9 +48,8 @@ class Stream:
             else:
                 return
 
-        if not stdout_only:
-            self.text = ("").join(words)
-            return self.text
+        self.text = ("").join(words)
+        return self.text
 
-    def print(self, capture: bool=False) -> str | None:
-        return self.read(stdout=True, stdout_only=not capture)
+    def print(self) -> str | None:
+        return self.read(stdout=True)

@@ -335,7 +335,6 @@ def shell(client: Client) -> None:
                 if cmd['function'] == 'ask':
                     kwargs = cmd['kwargs'].copy()
                     make_kwargs(kwargs, variables)
-                    kwargs['stdout_only'] = False
                     kwargs['stdout'] = True
                     client.ask(*cmd['args'], **kwargs)
             case 'global_variable':

@@ -217,7 +217,7 @@ class History:
             response_only=response_only
         )
 
-        if len(found) == 0:
+        if not found or len(found) == 0:
             return
         elif json:
             print(found)

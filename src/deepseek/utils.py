@@ -2,22 +2,21 @@ import openai
 import sys
 import os
 import re
-import readline
 
+from prompt_toolkit import prompt as get_input, PromptSession
+from prompt_toolkit.history import FileHistory
 from typing import Callable
 from collections import namedtuple
 from pyfzf import FzfPrompt
 from termcolor import cprint
 from pyperclip import copy
 
-
 fzf_prompt = FzfPrompt().prompt
 ChatCompletion = openai.types.chat.chat_completion.ChatCompletion
-
-history_file = os.path.join(os.getenv("HOME"), ".deepseek", 'prompt-history')
-if os.path.exists(history_file):
-    readline.read_history_file(history_file)
-
+PROMPT_SESSION = PromptSession()
+PROMPT_HISTORY = FileHistory(
+    os.path.join(os.getenv("HOME"), ".deepseek", 'prompt-history.txt')
+)
 Result: tuple[bool, str | None, any] = namedtuple(
     "Result",
     ('ok', 'msg', 'value'),
@@ -98,7 +97,7 @@ def create_response(
         return client.chat.completions.create(
             model=reasoner,
             messages=[
-                {"role": "system", "content": "Try to use emacs editor org-mode format for headings and items if possible otherwise, use markdown format. For tables use a csv format"},
+                {"role": "system", "content": "Use markdown format. For tables use a csv format"},
                 {"role": "user", "content": question}
             ],
             stream=stream,
@@ -110,137 +109,12 @@ def create_response(
         return
 
 
-def read_input(prompt: str='(deepseek) % ') -> str | None:
-    def _readline(prompt: str) -> str | None:
-        cprint(prompt, 'red', end='')
-        value = ''
-
-        try:
-            value = input()
-        except KeyboardInterrupt:
-            return
-        except EOFError:
-            return
-
-        value = value.strip()
-
-        if len(value) == 0:
-            return
-        else:
-            return value
-
-    def read(prompt: str, results: list[str]) -> list[str]:
-        line = _readline(prompt)
-        create_results = lambda: ('\n').join(results)
-
-        if not line:
-            results = create_results()
-            readline.add_history(results)
-            return results
-        elif line[-1] == '\\':
-            results.append(line[:-1])
-            return read('> ', results)
-        else:
-            results.append(line)
-            results = ('\n').join(results)
-            readline.add_history(results)
-            return results
-
-    out = read(prompt, [])
-    if len(out) == 0:
-        return
-    else:
-        return out
-
-
-def menu_select(choices: list[str], client=None) -> list[str]:
-    help_ = '''`/{pattern}`
-    Narrow down choices with regex
-
-`<int>, [int..]`
-    Select by index
-
-`q`
-    Go back in history. When there is no history, return None'''
-
-    def print_choices(choices: list[str]) -> None:
-        for i, q in enumerate(choices):
-            print(f"{i+1:<4}∣ {q}")
-
-    def grep_choices(choices: list[str], pattern: str) -> list[str]:
-        return [
-            choice for choice in choices 
-            if re.search(pattern, choice, re.I)
-        ]
-
-    def select_choice(choices: list[str], indices: str | list[str]) -> list[str]:
-        found = []
-        for index in indices:
-            try:
-                index = int(re.sub(r'\s+', '', index))
-                index = index - 1
-                found.append(choices[index])
-            except IndexError:
-                print_error(f"Invalid index: {index-1}")
-
-        return found
-
-    def parse_choice(choices: list[str], history: list[list[str]]) -> list[str]:
-        press_enter = lambda: input("<Press enter to continue>")
-        press_enter_help = lambda: input("<Press enter to continue (Type in `help` or `h` to show help)>")
-
-        print_choices(choices)
-        s = read_input("Select", client=client)
-
-        if not s:
-            print_warn("No input provided")
-            press_enter()
-            return parse_choice(choices, history)
-        elif s[0] == '/':
-            pattern = s[1:].lstrip()
-            if len(pattern) == 0:
-                print_warn("No regex pattern provided")
-                return parse_choice(choices, history)
-
-            found = grep_choices(choices, pattern)
-            if len(pattern) == 0:
-                print_warn("Query failed")
-                return parse_choice(choices, history)
-            else:
-                history.append(choices)
-                return parse_choice(found, history)
-        elif s[0] == 'q':
-            if len(history) == 1:
-                return
-            else:
-                return parse_choice(history.pop(), history)
-        elif re.search(r'[0-9]+', s):
-            s = re.split(r'\s*,\s*', s)
-            s = [x.strip() for x in s]
-            found = select_choice(choices, s)
-
-            if len(found) == 0:
-                print_warn("Nothing selected")
-                press_enter()
-            else:
-                return found
-        elif re.search(r'help', s):
-            print_ok(help_)
-            press_enter()
-            return parse_choice(choices, history)
-        else:
-            print_warn("Invalid input. Type in `help` to show help")
-            press_enter()
-            return parse_choice(choices, history)
-
-    return parse_choice(choices, [choices])
-
-
 def fzf_select(choices: list[str]) -> list[str]:
     return fzf_prompt(choices, "--multi --cycle")
 
 
-def parse_int(s: str) -> tuple[int | None, str | None]:
+def parse_int(s: str | list[str]) -> tuple[int | None, str | None]:
+    s = s[0] if type(s) == list else s
     if re.search(r'^[0-9]+$', s):
         return (True, None, int(s))
     else:
@@ -319,10 +193,8 @@ def validate(
             return Result(True, None, validator[value[0]])
     else:
         res = validator(value)
-        if not isinstance(res, Result):
-            raise Exception(f"Expected 'Result' as output, got `{res}`")
-
         ok, msg, value = res
+
         if ok:
             return Result(True, None, value)
         else:
@@ -472,4 +344,3 @@ def split(s: str, pattern: str=r' +', maxsplit: int | None=None) -> None | list[
         return
     else:
         return words
-
