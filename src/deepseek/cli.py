@@ -1,67 +1,15 @@
 import sys
 
+from typing import Self
 from dataclasses import dataclass, field
-# from .cli parser import *
-# from .client import Client
-# from .config import Config
-# from .history import History
-#
-from src.deepseek.input import Prompt
-from src.deepseek.utils import *
-from src.deepseek.cli_parser import *
-from src.deepseek.client import Client
-from src.deepseek.config import Config
-from src.deepseek.history import History
+from .input import Prompt
+from .utils import *
+from .cli_parser import *
+from .client import Client
+from .config import Config
+from .history import History
 
 @dataclass
-class Variable:
-    name: str
-    nargs: str = field(default_factory=lambda: 0)
-    validator: Validator = field(default_factory=lambda: None)
-    value: Value = field(default_factory=lambda: None)
-    default: Value = field(default_factory=lambda: None)
-    aliases: list[str] = field(default_factory=lambda: [])
-
-    def read(self) -> Value:
-        value = self.value
-        self.value = None
-        return value
-
-    def validate(self, value: Value | None=None, put: bool=False) -> Result: 
-        value = [] if value == None else value
-        res = check_nargs(value, self.nargs)
-
-        if not res.ok:
-            return res
-
-        if self.validator and value != None:
-            res = validate(value, self.validator)
-            if not res.ok:
-                return res
-            else:
-                value = res.value
-
-        if put and value != None:
-            self.value = value
-
-        return res
-
-    def set(self, value: Value) -> Result:
-        return self.validate(value, put=True)
-
-    def toggle(self) -> Result:
-        res = check_nargs([], self.nargs)
-
-        if not res.ok:
-            return res
-        elif self.value:
-            self.value = False
-        else:
-            self.value = True
-
-        return Result(True, None, self.value)
-
-
 class CLI:
     def __init__(self, **config: dict[str, str]) -> None:
         # Will be cleared after being read each time
@@ -73,6 +21,9 @@ class CLI:
         self.parser = Parser()
         self._variables: dict[str, Variable] = {}
         self._variables_aliases: dict[str, Variable] = {}
+        self._commands = self.parser._commands
+        self._commands_aliases = self.parser._commands_aliases
+        self.commands = self.parser.commands
 
     def __getitem__(self, variable: str) -> Variable | None:
         return self.variables.get(variable)
@@ -88,7 +39,7 @@ class CLI:
                 dict(variable=variable)
             )
 
-    def add_variable(self, *vs: Variable) -> None: 
+    def add_variables(self, *vs: Variable) -> None: 
         for var in vs:
             self.variables[var.name] = var
             self._variables[var.name] = var
@@ -96,6 +47,51 @@ class CLI:
             for alias in var.aliases:
                 self.variables[alias] = var
                 self._variables_aliases[alias] = var
+
+    def add_variable(
+        self,
+        name: str,
+        nargs: int | str=0,
+        validator: Validator | None=None,
+        default: Value | None=None,
+        aliases: list[str] = []
+    ) -> None:
+        self.add_variables(
+            Variable(
+                name,
+                nargs=nargs,
+                validator=validator,
+                default=default,
+                aliases=aliases
+            )
+        )
+
+    def get_variable(self, var: str) -> Result:
+        if obj := self.variables.get(var):
+            return Result(True, None, obj)
+        else:
+            return Result(False, f'No such variable: {var}', dict(variable=var))
+
+    def read_variable(self, var: str) -> Result:
+        res = self.get_variable(var)
+        if not res.ok:
+            return res
+
+        obj = res.value
+        value = obj.read()
+        value = obj.default if value == None else value
+
+        return Result(True, None, value)
+
+    def print_variable(self, var: str) -> Result:
+        res = self.get_variable(var)
+        if not res.ok:
+            return res
+
+        obj = res.value
+        cprint(f'{obj.value} (default: {obj.default})', 'green')
+
+        return Result(True, None, obj)
 
     def get_variables(self) -> dict[str, Value]:
         res = {}
@@ -127,9 +123,32 @@ class CLI:
             default = variable.default
             cprint(f'{variable.name:<15} = {value} (default: {default})', 'green')
 
-    def add_command(self, *command: CommandParser)  -> None:
-        for cmd in command:
-            self.commands[command.name] = command
+    def add_command(
+        self,
+        name: str,
+        nargs: int | str=0,
+        validator: Validator | None=None,
+        aliases: list[str] | None=None,
+        help: str | None=None,
+    ) -> CommandParser:
+        self.parser.add_command(
+            name,
+            nargs=nargs,
+            validator=validator,
+            aliases=aliases,
+            help=help
+        )
+        return self.commands[name]
+
+    def add_commands(self, *commands: CommandParser) -> None:
+        for cmd in commands:
+            self.add_command(
+                cmd.name,
+                nargs=cmd.nargs,
+                validator=cmd.validator,
+                aliases=cmd.aliases,
+                help=cmd.help
+            )
 
     def ask(self, words: list[str], **kwargs) -> str | None:
         for k, v in self.read_variables().items():
@@ -242,49 +261,60 @@ class CLI:
     def help(self) -> None:
         self.parser.print()
 
+    @classmethod
+    def setup(cls) -> Self:
+        cli = cls()
+        add_var = cli.add_variable
+        add_var('stream', default=True)
+        add_var(
+            'max_tokens',
+            nargs=1,
+            default=3000,
+            validator=parse_int,
+            aliases=['tokens', 'max-tokens']
+        )
+        add_var(
+            'clipboard',
+            nargs=0,
+            aliases=['clip'],
+            default=False,
+        )
+
+        add_cmd = cli.add_command
+        add_cmd('help', aliases=['h'], nargs=0)
+        add_cmd('quit', aliases=['q'], nargs=0)
+        add_cmd('set', nargs='+')
+        add_cmd('unset', nargs=1)
+        add_cmd('toggle', nargs='?')
+        add_cmd('variables', aliases=['vars', 'v'], nargs=0)
+        add_cmd('defaults', aliases=['d'], nargs=0)
+
+        ask = add_cmd('ask', aliases=['/'], nargs='+')
+        ask.add_flag('clipboard', nargs=0, aliases=['clip', 'c'])
+        ask.add_flag('stream', nargs=0, aliases=['s'])
+        ask.add_flag('max_tokens', nargs=1, aliases=['tokens', 't'], validator=parse_int)
+
+        history = add_cmd('history', nargs='?', aliases=['?'])
+        history.add_flag('fzf', nargs=0, default=True, aliases=['f'])
+        history.add_flag('json', nargs=0, default=False, aliases=['j'])
+        history.add_flag('clipboard', nargs=0, default=False, aliases=['clip', 'c'])
+        history.add_flag('query_only', nargs=0, default=False, aliases=['q'])
+        history.add_flag('response_only', nargs=0, default=False, aliases=['r'])
+
+        return cli
+
+def start_cli() -> None:
+    cli = CLI.setup()
+    cli.start()
 
 CLI.toggle_var = CLI.toggle_variable
 CLI.set_var = CLI.set_variable
 CLI.get_vars = CLI.get_variables
+CLI.get_var = CLI.get_variable
+CLI.read_var = CLI.read_variable
 CLI.read_vars = CLI.read_variables
 CLI.print_vars = CLI.print_variables
 CLI.add_cmd = CLI.add_command
-
-cli = CLI()
-cli.add_variable(
-    Variable("stream", default=True),
-    Variable(
-        "max_tokens",
-        aliases=['tokens', 'max-tokens'],
-        validator='^[0-9]+$',
-        default=3000,
-    ),
-    Variable(
-        'clipboard',
-        aliases=['copy', 'clip'],
-        default=False
-    )
-)
-
-add_cmd = cli.parser.add_cmd
-add_cmd('help', aliases=['h'], nargs=0)
-add_cmd('quit', aliases=['q'], nargs=0)
-add_cmd('set', nargs='+')
-add_cmd('unset', nargs=1)
-add_cmd('toggle', nargs='?')
-add_cmd('variables', aliases=['vars', 'v'], nargs=0)
-add_cmd('defaults', aliases=['d'], nargs=0)
-
-ask = add_cmd('ask', aliases=['/'], nargs='+')
-ask.add_flag('clipboard', nargs=0, aliases=['clip', 'c'])
-ask.add_flag('stream', nargs=0, aliases=['s'])
-ask.add_flag('max_tokens', nargs=1, aliases=['tokens', 't'], validator=parse_int)
-
-history = add_cmd('history', nargs='?', aliases=['?'])
-history.add_flag('fzf', nargs=0, default=True, aliases=['f'])
-history.add_flag('json', nargs=0, default=False, aliases=['j'])
-history.add_flag('clipboard', nargs=0, default=False, aliases=['clip', 'c'])
-history.add_flag('query_only', nargs=0, default=False, aliases=['q'])
-history.add_flag('response_only', nargs=0, default=False, aliases=['r'])
-
-cli.start()
+CLI.add_cmds = CLI.add_commands
+CLI.add_var = CLI.add_variable
+CLI.add_vars = CLI.add_variables

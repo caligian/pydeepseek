@@ -97,7 +97,7 @@ def create_response(
         return client.chat.completions.create(
             model=reasoner,
             messages=[
-                {"role": "system", "content": "Use markdown format. For tables use a csv format"},
+                {"role": "system", "content": "Use markdown format. For tables use a csv format. Do not use any text formatting such as boldface, italics, etc"},
                 {"role": "user", "content": question}
             ],
             stream=stream,

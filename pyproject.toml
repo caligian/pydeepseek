@@ -1,12 +1,12 @@
 [build-system]
-requires = ['setuptools >= 77.0.3', 'openai', 'pyfzf']
+requires = ['setuptools >= 77.0.3', 'openai', 'pyfzf', 'prompt_toolkit', 'termcolor']
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepseek"
 version = "0.0.1"
 authors = [{name = "Krunal Pamkar", email = 'caligian@protonmail.com'}]
-description = "Simple python version of sed"
+description = "Simple deepseek API and CLI with some basic configurations"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -17,4 +17,4 @@ Homepage = "https://github.com/caligian/deepseek"
 Issues = "https://github.com/caligian/deepseek/issues"
 
 [project.scripts]
-deepseek = "deepseek.cli:cmdline"
+deepseek = "deepseek.cli:start_cli"

@@ -4,6 +4,7 @@ from copy import copy
 from typing import Callable
 from collections import namedtuple
 from termcolor import cprint
+from dataclasses import field, dataclass
 from .utils import *
 
 NO_INPUT = "No input provided"
@@ -459,3 +460,52 @@ class Parser:
         else:
             cmd = cmds[cmd]
             return cmd.parse(tokens[1:])
+
+
+@dataclass
+class Variable:
+    name: str
+    nargs: str = field(default_factory=lambda: 0)
+    validator: Validator = field(default_factory=lambda: None)
+    value: Value = field(default_factory=lambda: None)
+    default: Value = field(default_factory=lambda: None)
+    aliases: list[str] = field(default_factory=lambda: [])
+
+    def read(self) -> Value:
+        value = self.value
+        self.value = None
+        return value
+
+    def validate(self, value: Value | None=None, put: bool=False) -> Result: 
+        value = [] if value == None else value
+        res = check_nargs([value], self.nargs)
+
+        if not res.ok:
+            return res
+
+        if self.validator and value != None:
+            res = validate(value, self.validator)
+            if not res.ok:
+                return res
+            else:
+                value = res.value
+
+        if put and value != None:
+            self.value = value
+
+        return res
+
+    def set(self, value: Value) -> Result:
+        return self.validate(value, put=True)
+
+    def toggle(self) -> Result:
+        res = check_nargs([], self.nargs)
+
+        if not res.ok:
+            return res
+        elif self.value:
+            self.value = False
+        else:
+            self.value = True
+
+        return Result(True, None, self.value)
