@@ -9,6 +9,7 @@ from .client import Client
 from .config import Config
 from .history import History
 
+
 @dataclass
 class CLI:
     def __init__(self, **config: dict[str, str]) -> None:
@@ -281,31 +282,86 @@ class CLI:
         )
 
         add_cmd = cli.add_command
-        add_cmd('help', aliases=['h'], nargs=0)
-        add_cmd('quit', aliases=['q'], nargs=0)
-        add_cmd('set', nargs='+')
-        add_cmd('unset', nargs=1)
-        add_cmd('toggle', nargs='?')
-        add_cmd('variables', aliases=['vars', 'v'], nargs=0)
-        add_cmd('defaults', aliases=['d'], nargs=0)
+        add_cmd('help', aliases=['h'], nargs=0, help="Display help")
+        add_cmd('quit', aliases=['q'], nargs=0, help='Quit session')
+        add_cmd('set', nargs='+', help='Set variable with a value')
+        add_cmd('unset', nargs=1, help='Unset a variable. This variable will now use default values')
+        add_cmd('toggle', nargs='?', help='Toggle a variable')
+        add_cmd('variables', aliases=['vars', 'v'], nargs=0, help='Diplay all variables for this session')
+        add_cmd('defaults', aliases=['d'], nargs=0, help='Display variable defaults for this session')
 
-        ask = add_cmd('ask', aliases=['/'], nargs='+')
-        ask.add_flag('clipboard', nargs=0, aliases=['clip', 'c'])
-        ask.add_flag('stream', nargs=0, aliases=['s'])
-        ask.add_flag('max_tokens', nargs=1, aliases=['tokens', 't'], validator=parse_int)
+        ask = add_cmd(
+            'ask',
+            aliases=['/'],
+            nargs='+',
+            help='Ask deepseek a query'
+        )
+        add_flag = ask.add_flag
+        add_flag(
+            'clipboard',
+            nargs=0,
+            aliases=['clip', 'c'],
+            help='Copy the results to clipboard'
+        )
+        add_flag(
+            'stream', 
+            nargs=0,
+            aliases=['s'],
+            help='Display output as it comes'
+        )
+        add_flag(
+            'max_tokens',
+            nargs=1,
+            aliases=['tokens', 't'],
+            validator=parse_int,
+            help='Set the maximum number of tokens to output'
+        )
 
-        history = add_cmd('history', nargs='?', aliases=['?'])
-        history.add_flag('fzf', nargs=0, default=True, aliases=['f'])
-        history.add_flag('json', nargs=0, default=False, aliases=['j'])
-        history.add_flag('clipboard', nargs=0, default=False, aliases=['clip', 'c'])
-        history.add_flag('query_only', nargs=0, default=False, aliases=['q'])
-        history.add_flag('response_only', nargs=0, default=False, aliases=['r'])
+        history = add_cmd(
+            'history',
+            nargs='?',
+            aliases=['?'],
+            help='Display and select query (optionally with a pattern)'
+        )
+        add_flag = history.add_flag
+        add_flag(
+            'fzf',
+            nargs=0,
+            default=True,
+            aliases=['f'],
+            help='Use a fuzzy matcher for queries (default: True)',
+        )
+        add_flag(
+            'json',
+            nargs=0,
+            default=False,
+            aliases=['j'],
+            help='Output in JSON format'
+        )
+        add_flag(
+            'clipboard',
+            nargs=0,
+            default=False,
+            aliases=['clip', 'c'],
+            help='Copy the selected query to clipboard'
+        )
+        add_flag(
+            'query_only',
+            nargs=0,
+            default=False,
+            aliases=['q'],
+            help='Select from queries and not print their response'
+        )
+        add_flag(
+            'response_only',
+            nargs=0,
+            default=False,
+            aliases=['r'],
+            help='Select from responses instead of queries and print only the response'
+        )
 
         return cli
 
-def start_cli() -> None:
-    cli = CLI.setup()
-    cli.start()
 
 CLI.toggle_var = CLI.toggle_variable
 CLI.set_var = CLI.set_variable
@@ -318,3 +374,12 @@ CLI.add_cmd = CLI.add_command
 CLI.add_cmds = CLI.add_commands
 CLI.add_var = CLI.add_variable
 CLI.add_vars = CLI.add_variables
+
+
+def start_cli() -> None:
+    cli = CLI.setup()
+    cli.start()
+
+start_cli()
+if __name__ != '__main__':
+    start_cli()

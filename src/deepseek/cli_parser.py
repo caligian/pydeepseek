@@ -81,8 +81,8 @@ class CommandFlagParser:
     def inline_print(self, color: str='blue', end: str='', indent: int=6) -> None:
         indent = ' ' * indent
         metavar = format_metavar(self.nargs, self.metavar)
-        msg = f"{indent}-{self.name} {metavar}"\
-            if metavar != '' else f'{indent}-{self.name}'
+        msg = f"{indent}-{self.name.replace('_', '-')} {metavar}"\
+            if metavar != '' else f'{indent}-{self.name.replace('_', '-')}'
         cprint(msg, color=color, end=end)
 
     def print(self, color: str='blue', indent: int=6, end: str='\n') -> None:
@@ -128,7 +128,7 @@ class CommandParser:
         return (self.name, args, flags)
 
     def inline_print(self, color: str='green', indent: int=2) -> None:
-        cprint(self.name, 'light_red', end='')
+        cprint(self.name.replace("_", '-'), 'light_red', end='')
 
         if len(self._flags) > 0:
             cprint(' [', color, end='')
@@ -150,19 +150,42 @@ class CommandParser:
         self.inline_print(color, indent=0)
         p_aliases = False
         p_flags = False
+        p_flags_aliases = False
 
         if self.aliases and len(self.aliases) > 0:
-            cprint(f"  Aliases:\n    {(', ').join(self.aliases)}", 'blue')
+            cprint('  Aliases:', 'green')
+            cprint('    ' + (', ').join(self.aliases), 'yellow')
             p_aliases = True
 
+        if len(self._flags_aliases) > 0:
+            if p_aliases:
+                print()
+
+            p_flags_aliases = True
+            cprint("  Flag aliases:", 'green')
+
+            for flag in self._flags.values():
+                if len(self._flags_aliases) > 0:
+                    cprint(f'    -{flag.name:<15}= ', 'blue', end='')
+                    if '_' in flag.name:
+                        cprint(f'-{flag.name.replace("_", "-")}, {(", ").join(["-" + x for x in flag.aliases])}', 'yellow')
+                    else:
+                        cprint(f'{(", ").join(["-" + x for x in flag.aliases])}', 'yellow')
+
+
         if len(self._flags) > 0:
-            if p_aliases: print()
+            if p_aliases or p_flags_aliases:
+                print()
+
+            p_flags = True
             flags = list(self._flags.values())
-            cprint("  Valid flags:", 'blue')
-            for flag in flags: flag.print(indent=4)
+            cprint("  Valid flags:", 'green')
+
+            for flag in flags:
+                flag.print(indent=4)
 
         if self.help:
-            if p_aliases or p_flags: print()
+            if p_aliases or p_flags or p_flags_aliases: print()
             help = self.help.split("\n")
             help = [x for x in help if len(x) > 0]
             help = [f"  {x}" for x in help]
