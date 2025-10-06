@@ -26,6 +26,11 @@ class CommandFlagParser:
                 f"Expected nargs to be a natural number or any of '+', '*', '?'",
                 f'{command}.{name}'
             ))
+        elif type(nargs) == int and nargs < 0:
+            raise Exception(make_msg(
+                f"Cannot use negative numbers as nargs: {nargs}",
+                f'{command}.{name}'
+            ))
 
         self.metavar = metavar
         self.aliases = aliases
