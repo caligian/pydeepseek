@@ -116,12 +116,32 @@ def fzf_select(choices: list[str]) -> list[str]:
 def parse_int(s: str | list[str]) -> tuple[int | None, str | None]:
     s = s[0] if type(s) == list else s
     if re.search(r'^[0-9]+$', s):
-        return (True, None, int(s))
+        return Result(True, None, int(s))
     else:
-        return (None, f'Expected an integer, got {s}', s)
+        return Result(None, f'Expected an integer, got {s}', s)
+
+def parse_int_in_range(start: int, end: int) -> Callable[[int], Result]:
+    assert start >= 0
+    assert end > 0
+
+    def parse(x: str) -> Result:
+        x = x[0] if type(x) == list else x
+        x: Result = parse_int(x)
+
+        if not x.ok:
+            return x
+
+        x = x.value
+        if x < start or x >= end:
+            return Result(False, f'Expected input to be in range {start}-{end}', dict(input=x))
+        else:
+            return x
+
+    return parse
 
 
-def parse_bool(s: str | None=None) -> bool:
+def parse_bool(s: str | list[str] | None=None) -> bool:
+    s = s[0] if type(s) == list else s
     if not s:
         return Result(True, None, False)
     elif s == 'on' or s == 'True' or s == 'true' or s == '1':

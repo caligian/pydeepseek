@@ -136,11 +136,9 @@ class History:
             return
 
         if fzf:
-            if res := fzf_select([x.replace("\n", '$$$') for x in found]):
-                found = res
-                found = [x.replace("$$$", "\n") for x in found]
-            else:
-                found = None
+            found = fzf_select([x.replace("\n", '$$$') for x in found])
+            found = [x.replace("$$$", "\n") for x in found]
+
         if not found or len(found) == 0:
             return
 

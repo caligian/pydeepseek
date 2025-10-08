@@ -105,7 +105,14 @@ class CommandParser:
         validator: Validator | None=None,
         aliases: list[str] | None=None,
         help: str | None=None,
+        should_parse_args: bool=True,
+        variable: bool=False,
+        metavar: str | None=None,
+        default: Value | None=None
     ) -> None:
+        self.metavar=metavar
+        self.default = default
+        self.variable = variable
         self.aliases = aliases
         self.help = help
         self.name = name
@@ -115,6 +122,15 @@ class CommandParser:
         self._flags_aliases: dict[str, ComamndFlagParser] = {}
         self._flags: dict[str, CommandFlagParser] = {}
         self.args: list[str] = []
+        self.should_parse_args = should_parse_args
+        self.value: Value | None=None
+
+        if variable:
+            self.should_parse_args = False
+            self.nargs = 1
+
+    def print_value(self) -> None:
+        cprint(f'{self.name} = {self.value}', 'yellow')
 
     def reset(self) -> None:
         self.args = []
@@ -148,7 +164,7 @@ class CommandParser:
 
             cprint(']', color, end='')
 
-        metavar = format_metavar(self.nargs)
+        metavar = format_metavar(self.nargs, self.metavar)
         cprint(f' {metavar}', color)
 
     def print(self, color: str='green') -> None:
@@ -156,14 +172,23 @@ class CommandParser:
         p_aliases = False
         p_flags = False
         p_flags_aliases = False
+        p_var = False
 
         if self.aliases and len(self.aliases) > 0:
             cprint('  Aliases:', 'green')
             cprint('    ' + (', ').join(self.aliases), 'yellow')
             p_aliases = True
 
-        if len(self._flags_aliases) > 0:
+        if self.variable:
             if p_aliases:
+                print()
+
+            cprint(f"  Current value: {self.value}", 'yellow')
+            cprint(f'  Default value: {self.default}', 'green')
+            p_var = True
+
+        if len(self._flags_aliases) > 0:
+            if p_aliases or p_var:
                 print()
 
             p_flags_aliases = True
@@ -179,7 +204,7 @@ class CommandParser:
 
 
         if len(self._flags) > 0:
-            if p_aliases or p_flags_aliases:
+            if p_aliases or p_flags_aliases or p_var:
                 print()
 
             p_flags = True
@@ -190,7 +215,9 @@ class CommandParser:
                 flag.print(indent=4)
 
         if self.help:
-            if p_aliases or p_flags or p_flags_aliases: print()
+            if p_aliases or p_flags or p_flags_aliases or p_var:
+                print()
+
             help = self.help.split("\n")
             help = [x for x in help if len(x) > 0]
             help = [f"  {x}" for x in help]
@@ -238,46 +265,6 @@ class CommandParser:
                 Context(command=self)
             )
 
-    def get_flag_value(self, flag: str) -> Result:
-        res = self.get_flag(flag)
-        if not res.ok:
-            return res
-        else:
-            return res.value.value
-
-    def set_flag_value(self, flag: str, value: str='', toggle: bool=False) -> Result:
-        res = self.get_flag(flag)
-        if not res.ok:
-            return res
-
-        flag: CommandFlag = res.value
-        if len(value) == 0 and (flag.nargs == '?' or flags.nargs == 0):
-            if toggle:
-                flag.toggle()
-            else:
-                flag.value = True
-        else:
-            res = flag.validate(value, put=True)
-            if not res.ok:
-                return res
-
-        return Result(True, None, flag)
-
-    def query_flag(self, flag: str, attrib: str) -> Result: 
-        res = self.get_flag(flag)
-        if not res.ok:
-            return res
-
-        try:
-            value = getattr(flag, attrib)
-            return Result(True, None, value)
-        except AttributeError:
-            return Result(
-                False,
-                f'{self.name}.{flag}: No such flag attribute: {attrib}',
-                Context(flag=flag, command=self)
-            )
-
     def parse_args(self, args: list[str]) -> tuple[bool, str | None, Value]:
         args_ = args
         positional = []
@@ -296,7 +283,7 @@ class CommandParser:
             pass
 
         # Check if flags are duplicate or have specification
-        flag_pos = get_flag_pos(args)
+        flag_pos = get_flag_pos(args) if self.should_parse_args else []
 
         for ind, name in flag_pos:
             if '-' in name:
@@ -437,18 +424,30 @@ class Parser:
         else:
             return Result(True, None, cmd)
 
-    def get_cmd(self, command: str) -> Result:
-        return self.get_command(command)
-
     def add_command(
         self,
         name: str,
         nargs: str | int=0,
+        metavar: str | None=None,
         validator: Validator | None=None,
         aliases: list[str] | None=None,
         help: str | None=None,
+        should_parse_args: bool=True,
+        variable: bool=False,
+        default: Value | None=None,
     ) -> CommandParser:
-        self.commands[name] = CommandParser(name, nargs, validator, aliases=aliases, help=help)
+        self.commands[name] = CommandParser(
+            name,
+            nargs,
+            validator,
+            aliases=aliases,
+            help=help,
+            should_parse_args=should_parse_args,
+            variable=variable,
+            default=default,
+            metavar=metavar,
+        )
+
         self._commands[name] = self.commands[name]
 
         if aliases:
@@ -458,16 +457,6 @@ class Parser:
 
         return self.commands[name]
 
-    def add_cmd(
-        self,
-        name: str,
-        nargs: str | int=0,
-        validator: Validator | None=None,
-        aliases: list[str] | None=None,
-        help: str | None=None
-    ) -> CommandParser:
-        return self.add_command(name, nargs, validator, aliases=aliases, help=help)
-
     def print(self) -> None:
         for name, cmd in self.commands.items():
             if not self._commands_aliases.get(name):
@@ -475,65 +464,36 @@ class Parser:
                 print()
 
     def parse(self, line: str) -> Result:
-        tokens = split(line)
+        tokens = split(line, maxsplit=1)
         if len(tokens) == 0:
             return Result(False, "No input provided", line)
 
         cmd = tokens[0]
+        tokens = tokens[1:]
         cmds = self.commands
 
         res = self.get_cmd(cmd)
         if not res.ok:
             return res
-        else:
-            cmd = cmds[cmd]
-            return cmd.parse(tokens[1:])
 
-
-@dataclass
-class Variable:
-    name: str
-    nargs: str = field(default_factory=lambda: 0)
-    validator: Validator = field(default_factory=lambda: None)
-    value: Value = field(default_factory=lambda: None)
-    default: Value = field(default_factory=lambda: None)
-    aliases: list[str] = field(default_factory=lambda: [])
-
-    def read(self) -> Value:
-        value = self.value
-        self.value = None
-        return value
-
-    def validate(self, value: Value | None=None, put: bool=False) -> Result: 
-        value = [] if value == None else value
-        res = check_nargs([value], self.nargs)
-
-        if not res.ok:
-            return res
-
-        if self.validator and value != None:
-            res = validate(value, self.validator)
-            if not res.ok:
-                return res
+        cmd = cmds[cmd]
+        if cmd.variable:
+            if len(tokens) < 1:
+                return Result(False, "No argument provided", dict(command=cmd))
             else:
-                value = res.value
+                cmd.value = tokens[0]
+                res = validate(cmd.value, cmd.validator, cmd.name)
+                if not res.ok:
+                    cmd.value = None
+                    return res
+                else:
+                    cmd.value = res.value
+                    return Result(True, None, (cmd.name, [res.value], {}))
 
-        if put and value != None:
-            self.value = value
-
-        return res
-
-    def set(self, value: Value) -> Result:
-        return self.validate(value, put=True)
-
-    def toggle(self) -> Result:
-        res = check_nargs([], self.nargs)
-
-        if not res.ok:
-            return res
-        elif self.value:
-            self.value = False
+        if len(tokens) > 0:
+            return cmd.parse(split(tokens[0]))
         else:
-            self.value = True
+            return cmd.parse([])
 
-        return Result(True, None, self.value)
+Parser.add_cmd = Parser.add_command
+Parser.get_cmd = Parser.get_command
