@@ -19,16 +19,16 @@ class Stream:
         if self.sync:
             return self.text
 
+        if not self.response:
+            return
+
         for event in self.response:
             if event.choices:
                 content = event.choices[0].delta.content
                 if content != "<think>" and content != "</think>":
                     yield content
 
-    def read(
-        self,
-        stdout: bool=False
-    ) -> str | None:
+    def read(self, stdout: bool=False) -> str | None:
         if self.text:
             print(self.text)
             return self.text

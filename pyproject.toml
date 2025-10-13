@@ -1,5 +1,5 @@
 [build-system]
-requires = ['setuptools >= 77.0.3', 'openai', 'pyfzf', 'prompt_toolkit', 'termcolor']
+requires = ['setuptools >= 77.0.3', 'openai', 'pyfzf', 'prompt_toolkit', 'termcolor', 'pandoc']
 build-backend = "setuptools.build_meta"
 
 [project]

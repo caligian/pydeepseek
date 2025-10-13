@@ -25,9 +25,14 @@ class Prompt:
         )
         mkvalidator = Validator.from_callable
         self.validators = dict(
-            is_number = mkvalidator(
+            is_float = mkvalidator(
+                lambda x: re.search(r'^[0-9]+[.][0-9]+$', x, re.I) != None,
+                error_message='Decimal input expected',
+                move_cursor_to_end=True
+            ),
+            is_int = mkvalidator(
                 lambda x: re.search(r'^[0-9]+$', x, re.I) != None,
-                error_message='Numeric input expected',
+                error_message='Integer input expected',
                 move_cursor_to_end=True
             ),
             is_dir = mkvalidator(
@@ -39,7 +44,17 @@ class Prompt:
                 lambda s: len(s) > 0,
                 error_message='No input provided',
                 move_cursor_to_end=True
-            )
+            ),
+            is_path = mkvalidator(
+                os.path.exists,
+                error_message='Expected valid file/directory path',
+                move_cursor_to_end=True
+            ),
+            is_file = mkvalidator(
+                os.path.isfile,
+                error_message='Expected valid filename',
+                move_cursor_to_end=True
+            ),
         )
         mkstyle = Style.from_dict
         self.styles = {

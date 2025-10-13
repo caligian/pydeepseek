@@ -14,7 +14,7 @@ fzf_prompt = FzfPrompt().prompt
 class History:
     def __init__(
         self,
-        history_dir: str,
+        history_dir: str=os.path.join(os.getenv('HOME'), '.deepseek', 'history'),
         write_on_append: bool=True,
         client=None
     ) -> None:

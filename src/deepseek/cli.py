@@ -1,9 +1,9 @@
 import sys
 
+from openai import APITimeoutError
 from typing import Self
 from dataclasses import dataclass, field
 from .input import Prompt
-from .utils import *
 from .cli_parser import *
 from .client import Client
 from .config import Config
@@ -14,6 +14,7 @@ from .history import History
 class CLI:
     def __init__(self, **config: dict[str, str]) -> None:
         # Will be cleared after being read each time
+        self.validators = VALIDATORS
         self.prompt = Prompt()
         self.config = Config(**config)
         self.history = History(self.config.history_dir)
@@ -22,22 +23,38 @@ class CLI:
         self._commands = self.parser._commands
         self._commands_aliases = self.parser._commands_aliases
         self.commands = self.parser.commands
+        self.variables = self.parser.variables
+        self._variables = self.parser._variables
+        self._variables_aliases = self.parser._variables_aliases
 
     def __getitem__(self, command: str) -> CommandParser | None:
         return self.commands.get(variable)
 
-    def print_defaults(self) -> None:
-        for command in self._commands.values():
-            if command.variable:
-                cprint(f'{command.name:<15} = {command.default}', 'green')
-
     def print_variables(self) -> None:
-        for command in self._commands.values():
-            if command.variable:
-                name = command.name
-                value = command.value
-                default = command.default
-                cprint(f'{name:<15} = {value} (default: {default})', 'green')
+        for command in self.parser.get_variables():
+            name = command.name
+            value = command.value
+            default = command.default
+            cprint(f'{name:<15} = {value} (default: {default})', 'green')
+    def add_variable(
+        self,
+        name: str,
+        validator: Validator | ValidatorCallable | str | None=None,
+        aliases: list[str] | None=None,
+        help: str | None=None,
+        default: Value | None=None,
+        metavar: str | None=None,
+    ) -> CommandParser:
+        return self.add_command(
+            name,
+            nargs=1,
+            validator=validator,
+            should_parse_args=False,
+            aliases=aliases,
+            help=help,
+            default=default,
+            variable=True,
+        )
 
     def add_command(
         self,
@@ -65,15 +82,14 @@ class CLI:
     def read_variables(self) -> dict[str, Value]:
         res = {}
 
-        for cmd in self._commands.values():
-            if cmd.variable:
-                value = cmd.value
-                if value == None: value = cmd.default
-                res[cmd.name] = value
+        for cmd in self.parser.get_variables():
+            value = cmd.value
+            if value == None: value = cmd.default
+            res[cmd.name] = value
 
         return res
 
-    def ask(self, words: list[str], **kwargs) -> str | None:
+    def ask(self, words: list[str], **kwargs) -> Result:
         for k, v in self.read_variables().items():
             if kwargs.get(k) == None: kwargs[k] = v
 
@@ -100,7 +116,7 @@ class CLI:
     def next(self) -> None:
         cmds = self.parser._commands.values()
         self.prompt.add_command_completer(*cmds)
-        res = str
+        res = ''
 
         try:
             res = self.readline()
@@ -110,12 +126,17 @@ class CLI:
             cprint("Goodbye.", 'yellow')
             sys.exit(0)
 
-        res: Result = self.parser.parse(res)
-        if not res.ok:
-            print_error(res.msg)
-            return self.next()
+        cmd, args, kwargs = ('', [], {})
+        try:
+            cmd, args, kwargs = self.parser.parse()
+        except ValueError as error:
+            msg = error_msg(error)
+            if msg == NO_INPUT:
+                self.next()
+            else:
+                print_error(error_msg(error))
+                self.next()
 
-        cmd, args, kwargs = res.value
         variables: list[str] = [
             'stream',
             'clipboard',
@@ -128,14 +149,19 @@ class CLI:
                 self.commands[x].value = args[0]
             case 'ask':
                 kwargs.update(self.read_variables())
-                self.ask(args, **kwargs)
+                res = self.ask(args, **kwargs)
+
+                if not res.ok:
+                    print_error(res.msg)
+                elif res.msg:
+                    print_msg(res.msg)
             case 'history':
                 pattern = args[0] if len(args) > 0 else '.+'
                 self.history.print(pattern, **kwargs)
             case 'variables':
-                self.print_vars()
+                self.print_variables()
             case 'defaults':
-                self.print_defaults()
+                self.print_variables()
             case 'help':
                 self.help()
             case 'quit':
@@ -191,6 +217,40 @@ class CLI:
         )
         add_flag = ask.add_flag
         add_flag(
+            'top_p',
+            nargs=1,
+            aliases=['p'],
+            validator=parse_int,
+            help='Set top-p'
+        )
+        add_flag(
+            'presence_penalty',
+            nargs=1,
+            aliases=['ppenalty'],
+            validator=parse_int,
+            help='Set presence penalty'
+        )
+        add_flag(
+            'frequency_penalty',
+            nargs=1,
+            aliases=['fpenalty'],
+            validator=parse_int,
+            help='Set frequency penalty'
+        )
+        add_flag(
+            'temperature',
+            nargs=1,
+            aliases=['temp'],
+            validator=parse_int,
+            help='Copy the results to clipboard'
+        )
+        add_flag(
+            'clipboard',
+            nargs=0,
+            aliases=['clip', 'c'],
+            help='Copy the results to clipboard'
+        )
+        add_flag(
             'clipboard',
             nargs=0,
             aliases=['clip', 'c'],
@@ -200,13 +260,15 @@ class CLI:
             'stream', 
             nargs=0,
             aliases=['s'],
-            help='Display output as it comes'
+            default=True,
+            help='Display output as it comes',
         )
         add_flag(
             'max_tokens',
             nargs=1,
             aliases=['tokens', 't'],
             validator=parse_int_in_range(50, 4096),
+            default=3000,
             help='Set the maximum number of tokens to output'
         )
 
@@ -256,13 +318,17 @@ class CLI:
         return cli
 
 
+CLI.read_vars = CLI.read_variables
 CLI.print_vars = CLI.print_variables
 CLI.add_cmd = CLI.add_command
+CLI.add_var = CLI.add_variable
 
 def start_cli() -> None:
-    cli = CLI.setup()
-    cli.start()
+    try:
+        cli = CLI.setup()
+        cli.start()
+    except APITimeoutError:
+        print_error("Restarting session.")
+        start_cli()
 
 start_cli()
-if __name__ != '__main__':
-    start_cli()
