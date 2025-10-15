@@ -1,37 +1,39 @@
-import openai 
+import openai
 import sys
-import os
 import re
 
-from prompt_toolkit import prompt as get_input, PromptSession
-from prompt_toolkit.history import FileHistory
-from typing import Callable
-from collections import namedtuple
 from pyfzf import FzfPrompt
-from termcolor import cprint
+from termcolor import cprint as colored_print
 from pyperclip import copy
-
 
 
 fzf_prompt = FzfPrompt().prompt
 ChatCompletion = openai.types.chat.chat_completion.ChatCompletion
-PROMPT_SESSION = PromptSession()
-PROMPT_HISTORY = FileHistory(
-    os.path.join(os.getenv("HOME"), ".deepseek", 'prompt-history.txt')
-)
 Value = str | int | bool | None
 ValueDict = dict[str, Value]
 ValueList = list[Value]
 Tokens = list[str]
 
 
-def error(msg: str) -> None:
-    cprint(msg, 'red')
-    sys.exit(1)
+def make_msg(s: str, prefix: str = "") -> str:
+    if prefix == "":
+        return s
+    else:
+        return f"{prefix}: {s}"
 
 
-def print_error(msg: str) -> None:
-    cprint(msg, 'red')
+def cprint(msg: str, color: str = "white", indent=0, **kwargs) -> None:
+    indent: str = " " * indent
+    msg = msg.split("\n")
+    msg = [indent + x for x in msg]
+    msg = ("\n").join(msg)
+    colored_print(msg, color, **kwargs)
+
+
+
+def print_error(msg: str | Exception) -> None:
+    msg = msg.args[0] if isinstance(msg, Exception) else msg
+    cprint(msg, "red")
 
 
 def print_exception(e: Exception) -> None:
@@ -39,23 +41,23 @@ def print_exception(e: Exception) -> None:
 
 
 def print_info(msg: str) -> None:
-    cprint(msg, 'blue')
+    cprint(msg, "blue")
 
 
 def print_warn(msg: str) -> None:
-    cprint(msg, 'yellow')
+    cprint(msg, "yellow")
 
 
 def print_msg(msg: str) -> None:
-    cprint(msg, 'cyan')
+    cprint(msg, "cyan")
 
 
 def print_prompt(prompt: str) -> None:
-    cprint(prompt, "green", end='')
+    cprint(prompt, "green", end="")
 
 
 def print_ok(s: str) -> None:
-    cprint(s, 'green')
+    cprint(s, "green")
 
 
 def fzf_select(choices: list[str]) -> list[str]:
@@ -63,16 +65,16 @@ def fzf_select(choices: list[str]) -> list[str]:
 
 
 def unlist(x: list) -> any:
-    if type(x) == list:
+    if type(x) is list:
         return x[0]
     else:
         return x
 
 
-def tolist(x: any, force: bool=False) -> list:
+def tolist(x: any, force: bool = False) -> list:
     if force:
         return [x]
-    elif type(x) != list:
+    elif type(x) is not list:
         return [x]
     else:
         return x
@@ -83,50 +85,42 @@ def write_clip(s: str) -> str:
     return s
 
 
-def get_flag_pos(args: list[str]) -> list[tuple[int, str]]:
-    res = []
-
-    for i, a in enumerate(args):
-        if len(a) > 0 and a[0] == '-':
-            res.append((i, a[1:]))
-
-    return sorted(res, key=lambda x: x[0])
-
-
-def format_metavar(nargs: str | int, metavar: str | None=None) -> str:
-    if type(nargs) == int:
+def format_metavar(nargs: str | int, metavar: str | None = None) -> str:
+    if type(nargs) is int:
         if metavar:
-            res = ['{' + metavar + '}' for _ in range(nargs)]
+            res = ["{" + metavar + "}" for _ in range(nargs)]
             res = (" ").join(res) if len(res) > 0 else ""
             return res
         else:
-            res = ['{arg' + str(i) + '}' for i in range(nargs)]
+            res = ["{arg" + str(i) + "}" for i in range(nargs)]
             if len(res) == 0:
                 return ""
             else:
-                return (' ').join(res)
-    elif nargs == '+':
+                return (" ").join(res)
+    elif nargs == "+":
         if metavar:
-            return '{' + metavar + '}, ...' 
+            return "{" + metavar + "}, ..."
         else:
-            return '{arg1} {arg2}, ...'
-    elif nargs == '*':
+            return "{arg1} {arg2}, ..."
+    elif nargs == "*":
         if metavar:
-            return '[' + metavar + '], ...' 
+            return "[" + metavar + "], ..."
         else:
-            return '[arg1] [arg2], ...'
-    elif nargs == '?':
+            return "[arg1] [arg2], ..."
+    elif nargs == "?":
         if metavar:
-            return '[' + metavar + ']' 
+            return "[" + metavar + "]"
         else:
-            return '[arg]'
+            return "[arg]"
 
 
-def split(s: str, pattern: str=r' +', maxsplit: int | None=None) -> None | list[str]:
-    words: list[str] 
+def split(
+    s: str, pattern: str = r" +", maxsplit: int | None = None
+) -> None | list[str]:
+    words: list[str]
 
     if maxsplit:
-        words = re.split(pattern, s, maxsplit=maxsplit) 
+        words = re.split(pattern, s, maxsplit=maxsplit)
     else:
         words = re.split(pattern, s)
 
@@ -136,3 +130,7 @@ def split(s: str, pattern: str=r' +', maxsplit: int | None=None) -> None | list[
         return
     else:
         return words
+
+
+def split2(s: str, pattern: str = r" +") -> None | list[str]:
+    return split(s, pattern, 2)

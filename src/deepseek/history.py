@@ -1,22 +1,20 @@
 import datetime
 import os
 import json as JSON
+import re
 
 from glob import glob
 from termcolor import cprint
-from pyfzf import FzfPrompt
-from typing import Iterable
-from typing import Self
-from .utils import *
+from .utils import fzf_select, tolist, print_msg
+from pyperclip import copy as write_clip
 
-fzf_prompt = FzfPrompt().prompt
 
 class History:
     def __init__(
         self,
-        history_dir: str=os.path.join(os.getenv('HOME'), '.deepseek', 'history'),
-        write_on_append: bool=True,
-        client=None
+        history_dir: str = os.path.join(os.getenv("HOME"), ".deepseek", "history"),
+        write_on_append: bool = True,
+        client=None,
     ) -> None:
         self.client = client
 
@@ -29,8 +27,7 @@ class History:
 
         today = datetime.date.today()
         self.file = os.path.join(
-            self.dir,
-            f"{today.day}-{today.month}-{today.year}.json"
+            self.dir, f"{today.day}-{today.month}-{today.year}.json"
         )
         cprint(f"Current history file: {self.file}", "cyan")
 
@@ -56,194 +53,123 @@ class History:
     def values(self) -> list[str]:
         return [k for k in self.history.values()]
 
-    def write_clip(
-        self,
-        query: str | list[str] | None=None,
-        response: str | list[str] | None=None,
-        json: bool=False,
-    ) -> bool | None:
-        query = tolist(query)
-        response = tolist(response)
-        create_dict = lambda q, r: dict(query=q, response=r)
-
-        if query and response:
-            assert len(query) == len(response)
-        
-        if json:
-            if query and response:
-                res = [
-                    create_dict(q, response[i])
-                    for i, q in enumerate(query)
-                ]
-                write_clip(JSON.dumps(res))
-            elif query:
-                write_clip(JSON.dumps([
-                    create_dict(q, None) for q in tolist(query)
-                ]))
-            elif response:
-                write_clip(JSON.dumps([
-                    create_dict(None, r) for r in tolist(response)
-                ]))
-        elif query and response:
-            for i, q in enumerate(query):
-                r = response[i]
-                write_clip(f'Query> {q}\nResponse> {r}\n\n')
-        elif query:
-            res = []
-            for q in query:
-                res.append(f"Query> {q}")
-                res.append('')
-            write_clip(("\n").join(res))
-        elif response:
-            res = []
-            for r in response:
-                res.append(f"Response> {q}")
-                res.append('')
-            write_clip(("\n").join(res))
-
-        return True
-
     def select(
         self,
-        pattern: str | None=None,
-        fzf: bool=False,
-        json: bool=False,
-        clipboard: bool=False,
-        response_only: bool=False,
-        query_only: bool=False
-    ) -> list[str] | list[dict[str, str]] | str | None:
-        create_dict = lambda q, r: dict(query=q, response=r)
-        make_found = lambda found: [
-            dict(query=x, response=self.history[x])
-            for x in found
-        ]
-        questions = list(self.history.items())
-        found = questions
-
-        if pattern:
-            if response_only:
-                found = [
-                    x for x in self.history.values()
-                    if re.search(pattern, x, re.I)
+        query_pattern: str = ".+",
+        response_pattern: str = ".+",
+        fzf: bool = False,
+        json: bool = False,
+        clipboard: bool = False,
+        stdout: bool = False,
+    ) -> list[dict[str, str]]:
+        def match_questions(
+            pattern: str,
+            search_key: bool = False,
+            search_value: bool = False,
+            items: list[tuple[str, str]] | None = None,
+        ) -> list[tuple[str, str]]:
+            items = items if items else self.history.items()
+            if search_key:
+                return [
+                    x
+                    for x in items 
+                    if re.search(pattern, x[1], re.I)
                 ]
             else:
-                found = [
-                    x for x in self.history.keys()
-                    if re.search(pattern, x, re.I)
+                return [
+                    x
+                    for x in items
+                    if re.search(pattern, x[0], re.I)
                 ]
+
+        def result(
+            items: list[tuple[str, str]] | list[list[str]],
+        ) -> list[dict[str, str]]:
+            res = []
+            for q, r in items:
+                res.append(dict(query=q, response=r))
+            return res
+
+        def format_query(q: str, r: str) -> str:
+            return ("").join(["Query>", q, "\n", "Response>", r])
+
+        def print_query(q: str, r: str) -> None:
+            cprint(f"Query> {q}", "red")
+            cprint(f"Response> {r}", "green")
+
+        def format_queries(res: list[dict[str, str]]) -> str:
+            res = []
+            for response in res:
+                res.append(format_query(response["query"], response["response"]))
+            return ("\n\n").join(res)
+
+        def print_queries(res: list[dict[str, str]]) -> str:
+            for response in res:
+                print_query(response["query"], response["response"])
+
+        found = match_questions(query_pattern, search_key=True)
+        found = match_questions(response_pattern, search_value=True, items=found)
+        found: dict[str, str] = dict(found)
+        res: list[dict[str, str]] = []
+        res_json: str = ""
 
         if len(found) == 0:
             return
 
         if fzf:
-            found = fzf_select([x.replace("\n", '$$$') for x in found])
-            found = [x.replace("$$$", "\n") for x in found]
+            queries = list(found.keys())
+            queries = fzf_select([x.replace("\n", "$$$") for x in queries])
+            queries = [x.replace("$$$", "\n") for x in queries]
+            res = result([(q, self.history[q]) for q in queries])
+        else:
+            res = result(found)
 
-        if not found or len(found) == 0:
-            return
+        if clipboard and json:
+            res_json = JSON.dumps(res)
+            write_clip(res_json)
+        elif clipboard:
+            write_clip(format_queries(res))
 
-        def queries():
-            return list(
-                map(lambda x: x[0] if type(x) == list else x, found)
-            )
+        if stdout and json:
+            print(res_json)
+        elif stdout:
+            print_queries(res)
 
-        def responses():
-            if response_only:
-                return list(
-                    map(lambda x: x[1] if type(x) == list else x, found)
-                )
-            else:
-                return list(map(
-                    lambda x: self.history[x[1]] if type(x) == list else self.history[x], 
-                    found
-                ))
-
-        queries_check_json = lambda:\
-            JSON.dumps(queries()) if json else queries()
-        responses_check_json = lambda:\
-            JSON.dumps(responses()) if json else responses()
-
-        if clipboard:
-            if query_only:
-                qs = queries()
-                if self.write_clip(query=qs, json=json): return qs
-            elif response_only:
-                rs = responses()
-                if self.write_clip(response=rs, json=json): return rs
-            else:
-                if self.write_clip(
-                    query=queries(),
-                    response=responses(),
-                    json=json
-                ):
-                    qs = queries()
-                    rs = responses()
-                    res = [
-                        create_dict(qs[i], rs[i]) for i in range(len(qs))
-                    ]
-                    return res
-        elif not query_only and not response_only:
-            found = [create_dict(q, self.history[q]) for q in found]
-            if json:
-                return JSON.dumps(found)
-            else:
-                return found
-        elif query_only:
-            return queries_check_json()
-        elif response_only:
-            return responses_check_json()
+        return res
 
     def print(
         self,
-        pattern: str | None=None,
-        fzf: bool=False,
-        json: bool=False,
-        clipboard: bool=False,
-        query_only: bool=False,
-        response_only: bool=False
+        query_pattern: str = ".+",
+        response_pattern: str = ".+",
+        fzf: bool = False,
+        json: bool = False,
+        clipboard: bool = False,
     ) -> None:
-        def print_response(q: str, r: str) -> None:
-            cprint(f'Query> {q}', 'red')
-            cprint(f"Response> {r}", 'white')
-
-        found = self.select(
-            pattern=pattern,
+        self.select(
+            query_pattern=query_pattern,
+            response_pattern=response_pattern,
             fzf=fzf,
             json=json,
             clipboard=clipboard,
-            query_only=query_only,
-            response_only=response_only
+            stdout=True,
         )
 
-        if not found or len(found) == 0:
-            return
-        elif json:
-            print(found)
-        elif type(found[0]) == str:
-            prefix = 'Query> ' if query_only else 'Response> '
-            for f in found:
-                cprint(prefix, 'yellow', end='')
-                cprint(f, 'red')
-                print()
-        else:
-            for res in found:
-                print_response(res['query'], res['response'])
-                print()
-
     def read(self) -> None:
-        print_msg(f'Loading all history files from {self.dir}')
-        files = glob(f'{self.dir}/*.json')
+        print_msg(f"Loading all history files from {self.dir}")
+        files = glob(f"{self.dir}/*.json")
 
         for file in files:
             with open(file) as fh:
                 s = fh.read()
-                for q, r in JSON.loads(s).items(): 
-                    if r: self.history[q] = r
+                for q, r in JSON.loads(s).items():
+                    if r:
+                        self.history[q] = r
 
     def append(self, question: str, response: str) -> None:
         self.history[question] = response
-        if self.write_on_append: self.write()
+        if self.write_on_append:
+            self.write()
 
     def write(self) -> None:
-        with open(self.file, 'w') as fh:
+        with open(self.file, "w") as fh:
             fh.write(JSON.dumps(self.history))

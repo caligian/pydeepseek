@@ -1,56 +1,85 @@
 import re
 
-from copy import copy
 from typing import Callable
-from collections import namedtuple
-from termcolor import cprint
-from dataclasses import field, dataclass
-from .utils import *
-from .validate import *
+from .validate import Validator, VALIDATORS
+from .utils import format_metavar, Value, split, make_msg, cprint
 
 ValidatorCallable = Callable[[any], any]
 
-NO_INPUT = "No input provided"
-check_nargs = VALIDATORS['has_nargs'].parse
+
+class NoInputError(Exception):
+    pass
+
+
+class NoArgumentsError(Exception):
+    pass
+
+
+class NoSuchFlagError(Exception):
+    pass
+
+
+class NoSuchCommandError(Exception):
+    pass
+
+
+class ParserError(Exception):
+    pass
+
+
+class DuplicateFlagError(Exception):
+    pass
+
+
+class RedundantArgumentsError(Exception):
+    pass
+
+
+check_nargs = VALIDATORS["has_nargs"].parse
 
 __all__ = [
-    'NO_INPUT',
-    'VALIDATORS',
-    'CommandFlagParser',
-    'CommandParser',
-    'Parser',
-    'ValidatorCallable',
+    "NO_INPUT",
+    "VALIDATORS",
+    "FlagParser",
+    "CommandParser",
+    "Parser",
+    "ValidatorCallable",
 ]
 
-class CommandFlagParser:
+
+class FlagParser:
     def __init__(
         self,
         command: str,
         name: str,
-        nargs: str | int=0,
-        validator: ValidatorCallable | str | Validator | None=None,
-        default: Value | None=None,
-        aliases: list[str] | None=None,
-        metavar: str | None=None,
-        help: str | None=None,
+        nargs: str | int = 0,
+        validator: ValidatorCallable | str | Validator | None = None,
+        default: Value | None = None,
+        aliases: list[str] = [],
+        metavar: str | None = None,
+        help: str | None = None,
     ) -> None:
-        name = name.replace('-', '_')
+        name = name.replace("-", "_")
 
-        if nargs != '?' and nargs != '+' and nargs != '*' and type(nargs) != int:
-            raise ValueError(make_msg(
-                f"Expected nargs to be a natural number or any of '+', '*', '?'",
-                f'{command}.{name}'
-            ))
-        elif type(nargs) == int and nargs < 0:
-            raise Exception(make_msg(
-                f"Cannot use negative numbers as nargs: {nargs}",
-                f'{command}.{name}'
-            ))
+        if nargs != "?" and nargs != "+" and nargs != "*" and type(nargs) is not int:
+            raise ValueError(
+                make_msg(
+                    "Expected nargs to be a natural number or any of '+', '*', '?'",
+                    f"{command}.{name}",
+                )
+            )
+        elif type(nargs) is int and nargs < 0:
+            raise Exception(
+                make_msg(
+                    f"Cannot use negative numbers as nargs: {nargs}",
+                    f"{command}.{name}",
+                )
+            )
 
         if validator:
-            if type(validator) == str:
+            if type(validator) is str:
                 validator = VALIDATORS[validator].parse
-            elif type(validator) == Validator:
+            elif type(validator) is Validator:
                 validator = validator.parse
 
         self.metavar = metavar
@@ -62,7 +91,10 @@ class CommandFlagParser:
         self.validator = validator
         self.default = default
         self.value: Value = default
-        self.prefix = f'{self.command}.{self.name}'
+        self.prefix = f"{self.command}.{self.name}"
+
+        if "_" in name:
+            self.aliases.append(name.replace("_", "-"))
 
     def reset(self) -> None:
         self.value = None
@@ -73,11 +105,11 @@ class CommandFlagParser:
 
         return value
 
-    def validate(self, value: str, put: bool=False) -> any:
+    def validate(self, value: str, put: bool = False, prefix: str = "") -> any:
         check_nargs([value], self.nargs, prefix=prefix)
 
         if self.validator:
-            value = self.validator(value)
+            value = self.validator(value, prefix=prefix)
 
         if put:
             self.value = value
@@ -87,7 +119,7 @@ class CommandFlagParser:
     def set(self, value: str) -> any:
         return self.validate(value, put=True)
 
-    def toggle(self, prefix: str='') -> bool:
+    def toggle(self, prefix: str = "") -> bool:
         if not self.value:
             self.value = True
         else:
@@ -95,40 +127,54 @@ class CommandFlagParser:
 
         return self.value
 
-    def inline_print(self, color: str='blue', end: str='', indent: int=6) -> None:
-        indent = ' ' * indent
+    def inline_print(self, color: str = "red", end: str = "", indent: int = 6) -> None:
         metavar = format_metavar(self.nargs, self.metavar)
-        msg = f"{indent}-{self.name.replace('_', '-')} {metavar}"\
-            if metavar != '' else f'{indent}-{self.name.replace('_', '-')}'
-        cprint(msg, color=color, end=end)
+        msg = (
+            f"-{self.name.replace('_', '-')} {metavar}"
+            if metavar != ""
+            else f"-{self.name.replace('_', '-')}"
+        )
+        cprint(msg, color=color, indent=indent, end=end)
 
-    def print(self, color: str='blue', indent: int=6, end: str='\n') -> None:
+    def print(self, color: str = "red", indent: int = 2, end: str = "\n") -> None:
         self.inline_print(color=color, end=end, indent=indent)
+
+        printed_aliases = False
+
+        if len(self.aliases) > 0:
+            printed_aliases = True
+            cprint("Aliases:", "blue", indent=indent + 2, end=" ")
+            cprint(
+                (", ").join(sorted([f"-{x}" for x in self.aliases])), indent=indent + 2
+            )
+
         if self.help:
-            indent = ' ' * (indent + 2) 
-            cprint(f'{indent}{self.help}')
+            if printed_aliases:
+                print()
+            cprint(self.help, color='light_grey', indent=indent + 2)
 
 
 class CommandParser:
     def __init__(
         self,
         name: str,
-        nargs: int | str=0,
-        validator: ValidatorCallable | Validator | str | None=None,
-        aliases: list[str] | None=None,
-        help: str | None=None,
-        should_parse_args: bool=True,
-        variable: bool=False,
-        metavar: str | None=None,
-        default: Value | None=None
+        nargs: int | str = 0,
+        validator: ValidatorCallable | Validator | str | None = None,
+        aliases: list[str] | None = None,
+        help: str | None = None,
+        should_parse_args: bool = True,
+        variable: bool = False,
+        metavar: str | None = None,
+        default: Value | None = None,
     ) -> None:
         if validator:
-            if type(validator) == str:
+            if type(validator) is str:
                 validator = VALIDATORS[validator].parse
-            elif type(validator) == Validator:
+            elif type(validator) is Validator:
                 validator = validator.parse
 
-        self.metavar=metavar
+        name = name.replace("-", "_")
+        self.metavar = metavar
         self.default = default
         self.variable = variable
         self.aliases = aliases
@@ -136,29 +182,42 @@ class CommandParser:
         self.name = name
         self.nargs = nargs
         self.validator = validator
-        self.flags: dict[str, CommandFlagParser] = {}
-        self._flags_aliases: dict[str, ComamndFlagParser] = {}
-        self._flags: dict[str, CommandFlagParser] = {}
+        self.flags: dict[str, FlagParser] = {}
+        self._flags_aliases: dict[str, FlagParser] = {}
+        self._flags: dict[str, FlagParser] = {}
         self.args: list[str] = []
         self.should_parse_args = should_parse_args
-        self.value: Value | None=None
+        self.value: Value | None = None
 
         if variable:
             self.should_parse_args = False
             self.nargs = 1
 
+    def get_flags(self) -> list[FlagParser]:
+        return list(self._flags.values())
+
+    def get_flags_pos(self, args: list[str]) -> list[tuple[int, str]]:
+        res = []
+
+        for i, a in enumerate(args):
+            if len(a) > 0 and a[0] == "-":
+                res.append((i, a[1:]))
+
+        return sorted(res, key=lambda x: x[0])
+
     def print_value(self) -> None:
-        cprint(f'{self.name} = {self.value}', 'yellow')
+        cprint(f"{self.name} = {self.value}", "yellow")
 
     def reset(self) -> None:
         self.args = []
-        for flag in self._flags.keys(): self.flags[flag].reset()
+        for flag in self._flags.keys():
+            self.flags[flag].reset()
 
     def extract(self) -> tuple[str, list, dict[str, any]]:
         flags = {}
 
         for flag in self._flags.keys():
-            flag: CommandFlag = self.flags[flag]
+            flag: FlagParser = self.flags[flag]
             flags[flag.name] = flag.extract()
 
         args = self.args
@@ -166,74 +225,54 @@ class CommandParser:
 
         return (self.name, args, flags)
 
-    def inline_print(self, color: str='green', indent: int=2) -> None:
-        cprint(self.name.replace("_", '-'), 'light_red', end='')
+    def inline_print(self, color: str = "green", indent: int = 2) -> None:
+        cprint(self.name.replace("_", "-"), "light_red", end="")
 
         if len(self._flags) > 0:
-            cprint(' [', color, end='')
-            flags = list(self._flags.values())
-            l = len(flags)
+            cprint(" [", color, end="")
+            flags = self.get_flags()
+            flags_len = len(flags)
 
             for i, flag in enumerate(flags):
-                if i != l-1:
-                    flag.inline_print(end=' ', indent=0, color='light_magenta')
+                if i != flags_len - 1:
+                    flag.inline_print(end=" ", indent=0, color="light_magenta")
                 else:
-                    flag.inline_print(end='', indent=0, color='light_magenta')
+                    flag.inline_print(end="", indent=0, color="light_magenta")
 
-            cprint(']', color, end='')
+            cprint("]", color, end="")
 
         metavar = format_metavar(self.nargs, self.metavar)
-        cprint(f' {metavar}', color)
+        cprint(f" {metavar}", color)
 
-    def print(self, color: str='green') -> None:
+    def print(self, color: str = "green") -> None:
         self.inline_print(color, indent=0)
         p_aliases = False
         p_flags = False
-        p_flags_aliases = False
         p_var = False
 
+        if len(self.flags) > 0:
+            p_flags = True
+            cprint("Flags:", "green", indent=2)
+
+            for flag in self.get_flags():
+                flag.print(indent=4)
+                print()
+
         if self.aliases and len(self.aliases) > 0:
-            cprint('  Aliases:', 'green')
-            cprint('    ' + (', ').join(self.aliases), 'yellow')
+            cprint("Aliases:", "green", indent=2)
+            cprint((", ").join(self.aliases), "yellow", indent=4)
             p_aliases = True
 
         if self.variable:
             if p_aliases:
                 print()
 
-            cprint(f"  Current value: {self.value}", 'yellow')
-            cprint(f'  Default value: {self.default}', 'green')
+            cprint(f"Current value: {self.value}", "yellow", indent=2)
+            cprint(f"Default value: {self.default}", "green", indent=2)
             p_var = True
 
-        if len(self._flags_aliases) > 0:
-            if p_aliases or p_var:
-                print()
-
-            p_flags_aliases = True
-            cprint("  Flag aliases:", 'green')
-
-            for flag in self._flags.values():
-                if len(self._flags_aliases) > 0:
-                    cprint(f'    -{flag.name:<15}= ', 'blue', end='')
-                    if '_' in flag.name:
-                        cprint(f'-{flag.name.replace("_", "-")}, {(", ").join(["-" + x for x in flag.aliases])}', 'yellow')
-                    else:
-                        cprint(f'{(", ").join(["-" + x for x in flag.aliases])}', 'yellow')
-
-
-        if len(self._flags) > 0:
-            if p_aliases or p_flags_aliases or p_var:
-                print()
-
-            p_flags = True
-            flags = list(self._flags.values())
-            cprint("  Valid flags:", 'green')
-
-            for flag in flags:
-                flag.print(indent=4)
-
         if self.help:
-            if p_aliases or p_flags or p_flags_aliases or p_var:
+            if p_aliases or p_flags or p_var:
                 print()
 
             help = self.help.split("\n")
@@ -244,20 +283,20 @@ class CommandParser:
     def add_flag(
         self,
         name: str,
-        nargs: int | str=0,
-        validator: ValidatorCallable | None=None,
-        default: Value | None=None,
-        aliases: list[str] | None=None,
-        help: str | None=None
-    ) -> CommandFlagParser:
-        self.flags[name] = CommandFlagParser(
+        nargs: int | str = 0,
+        validator: ValidatorCallable | None = None,
+        default: Value | None = None,
+        aliases: list[str] | None = None,
+        help: str | None = None,
+    ) -> FlagParser:
+        self.flags[name] = FlagParser(
             self.name,
             name,
             nargs,
             validator=validator,
             default=default,
             aliases=aliases,
-            help=help
+            help=help,
         )
         self._flags[name] = self.flags[name]
 
@@ -268,48 +307,48 @@ class CommandParser:
 
         return self._flags[name]
 
-    def __getitem__(self, flag: str) -> CommandFlagParser:
-        if flag := self.flags.get(flag):
+    def __getitem__(self, flag_name: str) -> FlagParser:
+        if flag := self.flags.get(flag_name):
             return flag
         else:
-            raise ValueError(f"{self.command}.{self.name}: No specification defined")
-
+            raise NoSuchFlagError(f"{self.name}.{flag_name}: No specification defined")
 
     def parse_args(self, args: list[str]) -> None:
-        args_ = args
         positional = []
         pos = {}
         ctr = 0
         invert = {}
         toggle = {}
-        flag_pos: list[tuple[int, str]]
+        flags_pos: list[tuple[int, str]]
 
         try:
-            end_of_args = args.index('--')
-            positional = args[end_of_args+1:]
+            end_of_args = args.index("--")
+            positional = args[end_of_args + 1 :]
             args = args[:end_of_args]
         except ValueError:
             pass
 
         # Check if flags are duplicate or have specification
-        flag_pos = get_flag_pos(args) if self.should_parse_args else []
+        flags_pos = self.get_flags_pos(args) if self.should_parse_args else []
 
-        for ind, name in flag_pos:
-            if '-' in name:
-                name = name.replace("-", '_')
+        for ind, name in flags_pos:
+            if "-" in name:
+                name = name.replace("-", "_")
 
-            if re.match(r'no_', name):
+            if re.match(r"no_", name):
                 name = name[3:]
                 invert[name] = True
-            elif re.match(r'toggle_', name):
+            elif re.match(r"toggle_", name):
                 name = name[7:]
                 toggle[name] = True
 
             flag = self[name]
-            if pos.get(name) != None:
-                raise ValueError(f"{self.name}.{name}: Duplicate flag")
+            if pos.get(name):
+                raise DuplicateFlagError(f"{self.name}.{name}: Duplicate flag")
             elif ind > 0 and ctr == 0:
-                raise ValueError(f'{self.name}: Redundant arguments passed before flag .{name}')
+                raise RedundantArgumentsError(
+                    f"{self.name}: Redundant arguments passed before flag .{name}"
+                )
             else:
                 pos[ind] = flag
                 ctr += 1
@@ -321,12 +360,12 @@ class CommandParser:
             self.args = [*args, *positional]
             return
 
-        for i in range(len(pos)-1):
-            current, next_ = pos[i], pos[i+1]
+        for i in range(len(pos) - 1):
+            current, next_ = pos[i], pos[i + 1]
             current_ind, next_ind = current[0], next_[0]
             current, next_ = current[1], next_[1]
-            _args = args[current_ind+1:next_ind]
-            prefix = f'{self.name}.{current.name}'
+            _args = args[current_ind + 1 : next_ind]
+            prefix = f"{self.name}.{current.name}"
             check_nargs(_args, current.nargs, prefix=prefix)
 
             if len(_args) == 0:
@@ -339,9 +378,9 @@ class CommandParser:
             else:
                 current.validate(_args[0], put=True)
 
-        last: CommandFlagParser = pos[-1][1]
+        last: FlagParser = pos[-1][1]
         last_ind = pos[-1][0]
-        last_args = args[last_ind+1:]
+        last_args = args[last_ind + 1 :]
         prefix = f"{self.name}.{last.name}"
 
         if last.nargs == 0:
@@ -363,14 +402,15 @@ class CommandParser:
         last.validate(last_args[0], put=True)
 
         self.args = positional
-        
-    def parse(self, args: list[str]) -> tuple[str, list, dict]:
+
+    def parse(self, args: list[str] | None = None) -> tuple[str, list, dict]:
+        args = [] if args is None else args
         self.parse_args(args)
         check_nargs(self.args, self.nargs, prefix=self.name)
 
         if self.validator:
             res = self.validator(self.args)
-            self.args = res if res != None else self.args
+            self.args = res if res else self.args
 
         return self.extract()
 
@@ -385,13 +425,14 @@ class Parser:
         self._variables_aliases: dict[str, CommandParser] = {}
 
     def reset(self) -> None:
-        for cmd in self.commands.values(): cmd.reset()
+        for cmd in self.commands.values():
+            cmd.reset()
 
     def __getitem__(self, command: str) -> CommandParser:
         if cmd := self.commands.get(command):
             return cmd
         else:
-            raise ValueError(f'No specification provided for command `{command}`')
+            raise ValueError(f"No specification provided for command `{command}`")
 
     def get_commands(self) -> list[CommandParser]:
         return list(self._commands.values())
@@ -402,15 +443,15 @@ class Parser:
     def add_variable(
         self,
         name: str,
-        metavar: str | None=None,
-        validator: Validator | ValidatorCallable | str | None=None,
-        aliases: list[str] | None=None,
-        help: str | None=None,
-        should_parse_args: bool=True,
-        default: Value | None=None,
+        metavar: str | None = None,
+        validator: Validator | ValidatorCallable | str | None = None,
+        aliases: list[str] | None = None,
+        help: str | None = None,
+        should_parse_args: bool = True,
+        default: Value | None = None,
     ) -> CommandParser:
         return self.add_command(
-            name, 
+            name,
             nargs=1,
             metavar=metavar,
             validator=validator,
@@ -418,20 +459,20 @@ class Parser:
             help=help,
             should_parse_args=False,
             default=default,
-            variable=True
+            variable=True,
         )
 
     def add_command(
         self,
         name: str,
-        nargs: str | int=0,
-        metavar: str | None=None,
-        validator: Validator | ValidatorCallable | str | None=None,
-        aliases: list[str] | None=None,
-        help: str | None=None,
-        should_parse_args: bool=True,
-        variable: bool=False,
-        default: Value | None=None,
+        nargs: str | int = 0,
+        metavar: str | None = None,
+        validator: Validator | ValidatorCallable | str | None = None,
+        aliases: list[str] | None = None,
+        help: str | None = None,
+        should_parse_args: bool = True,
+        variable: bool = False,
+        default: Value | None = None,
     ) -> CommandParser:
         self.commands[name] = CommandParser(
             name,
@@ -446,7 +487,7 @@ class Parser:
         )
         self._commands[name] = self.commands[name]
 
-        if variable: 
+        if variable:
             self.variables[name] = self.commands[name]
             self._variables[name] = self.commands[name]
 
@@ -464,20 +505,20 @@ class Parser:
     def print(self) -> None:
         for name, cmd in self.commands.items():
             if not self._commands_aliases.get(name):
-                cmd.print(color='light_grey')
+                cmd.print(color="light_grey")
                 print()
 
     def parse(self, line: str) -> any:
         tokens = split(line, maxsplit=1)
         if len(tokens) == 0:
-            raise ValueError('No input provided')
+            raise NoInputError
 
         cmd = self[tokens[0]]
         tokens = tokens[1:]
 
         if cmd.variable:
             if len(tokens) < 1:
-                raise ValueError(f"{cmd.name}: No argument provided")
+                raise NoArgumentsError
             elif cmd.validator:
                 cmd.value = cmd.validator(tokens[0])
             else:
