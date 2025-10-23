@@ -151,7 +151,7 @@ class FlagParser:
         if self.help:
             if printed_aliases:
                 print()
-            cprint(self.help, color='light_grey', indent=indent + 2)
+            cprint(self.help, color="light_grey", indent=indent + 2)
 
 
 class CommandParser:
@@ -381,6 +381,8 @@ class CommandParser:
         last: FlagParser = pos[-1][1]
         last_ind = pos[-1][0]
         last_args = args[last_ind + 1 :]
+        last_args_len = len(last_args)
+        last_nargs = last.nargs
         prefix = f"{self.name}.{last.name}"
 
         if last.nargs == 0:
@@ -394,12 +396,20 @@ class CommandParser:
 
             self.args = positional
             return
-        elif len(last_args) > 0:
-            positional.extend(last_args[1:])
-            last_args = [last_args[0]]
-
-        check_nargs(last_args, last.nargs, prefix=prefix)
-        last.validate(last_args[0], put=True)
+        elif type(last_nargs) is int:
+            if last_args_len >= last_nargs:
+                positional.extend(last_args[1:])
+                last.validate(last_args[0], put=True)
+            else:
+                check_nargs(last_args, last_nargs)
+        elif last_nargs == "?":
+            if last_args_len >= 1:
+                positional.extend(last_args[1:])
+                last_args = [last_args[0]]
+                last.validate(last_args[0], put=True)
+            else:
+                positional.extend(last_args)
+                last_args = []
 
         self.args = positional
 
@@ -508,7 +518,7 @@ class Parser:
                 cmd.print(color="light_grey")
                 print()
 
-    def parse(self, line: str) -> any:
+    def parse(self, line: str) -> None:
         tokens = split(line, maxsplit=1)
         if len(tokens) == 0:
             raise NoInputError
@@ -525,10 +535,9 @@ class Parser:
                 cmd.value = tokens[0]
             return (cmd.name, [cmd.value], {})
         elif len(tokens) > 0:
-            return cmd.parse(split(tokens[0]))
+            return cmd.parse(re.split(r'\s+', tokens[0]))
         else:
-            return cmd.parse([])
-
+            return cmd.parse()
 
 Parser.add_cmd = Parser.add_command
 Parser.add_var = Parser.add_variable

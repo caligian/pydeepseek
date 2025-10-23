@@ -43,7 +43,7 @@ class CLI:
             name = command.name
             value = command.value
             default = command.default
-            cprint(f"{name:<15} = {value} (default: {default})", "green")
+            cprint(f"{name:<20} = {value} (default: {default})", "green")
 
     def add_variable(
         self,
@@ -196,7 +196,7 @@ class CLI:
         )
         add_var(
             "temperature",
-            aliases=["temp", 't'],
+            aliases=["temp", "t"],
             validator=float_in_range(0.0, 2.0),
             help="Controls randomness (0 = deterministic, 2 = more random)",
         )
@@ -273,7 +273,7 @@ class CLI:
             nargs=1,
             aliases=["fpenalty", "fp"],
             validator=float_in_range(-2.0, 2.0),
-            help="Penalize frequent tokens by a multiplier (range: -2.0-2.0)"
+            help="Penalize frequent tokens by a multiplier (range: -2.0-2.0)",
         )
         add_flag(
             "temperature",

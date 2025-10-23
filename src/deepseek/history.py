@@ -63,12 +63,14 @@ class History:
         stdout: bool = False,
     ) -> list[dict[str, str]]:
         def match_questions(
-            pattern: str,
+            pattern: str | None,
             search_key: bool = False,
             search_value: bool = False,
             items: list[tuple[str, str]] | None = None,
         ) -> list[tuple[str, str]]:
+            pattern = pattern if pattern else '.+'
             items = items if items else self.history.items()
+
             if search_key:
                 return [
                     x
@@ -109,7 +111,7 @@ class History:
 
         found = match_questions(query_pattern, search_key=True)
         found = match_questions(response_pattern, search_value=True, items=found)
-        found: dict[str, str] = dict(found)
+        queries = [x[0] for x in found]
         res: list[dict[str, str]] = []
         res_json: str = ""
 
@@ -117,7 +119,6 @@ class History:
             return
 
         if fzf:
-            queries = list(found.keys())
             queries = fzf_select([x.replace("\n", "$$$") for x in queries])
             queries = [x.replace("$$$", "\n") for x in queries]
             res = result([(q, self.history[q]) for q in queries])
