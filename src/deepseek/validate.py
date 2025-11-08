@@ -226,7 +226,6 @@ def check_command_nargs(
 
     return check_nargs(args, nargs, prefix=prefix)
 
-
 @dataclass
 class Validator:
     name: str
@@ -245,7 +244,8 @@ class Validator:
         return f(self.parse(value, *validate_args, **validate_kwargs))
 
     def partial(self, *validate_args, **validate_kwargs) -> Callable[[...], any]:
-        def apply(value) -> Callable:
+        # fix this (is this the fix?)
+        def apply(value, *_args, **_kwargs) -> Callable:
             return self.condition(value, *validate_args, **validate_kwargs)
 
         return apply

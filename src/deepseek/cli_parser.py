@@ -38,7 +38,6 @@ class RedundantArgumentsError(Exception):
 check_nargs = VALIDATORS["has_nargs"].parse
 
 __all__ = [
-    "NO_INPUT",
     "VALIDATORS",
     "FlagParser",
     "CommandParser",
@@ -535,9 +534,10 @@ class Parser:
                 cmd.value = tokens[0]
             return (cmd.name, [cmd.value], {})
         elif len(tokens) > 0:
-            return cmd.parse(re.split(r'\s+', tokens[0]))
+            return cmd.parse(re.split(r"\s+", tokens[0]))
         else:
             return cmd.parse()
+
 
 Parser.add_cmd = Parser.add_command
 Parser.add_var = Parser.add_variable

@@ -107,11 +107,15 @@ class Client:
 
     def markdown2org(self, s: str) -> str:
         s = s.replace("###", "#")
-        md = pandoc.read(source=s, format="markdown")
         try:
+            md = pandoc.read(source=s, format="markdown")
             return pandoc.write(md, format="org")
+        except KeyboardInterrupt:
+            return s
+        except EOFError:
+            return s
         except Exception:
-            return md
+            return s
 
     def ask(
         self,
@@ -203,3 +207,6 @@ class Client:
     def close(self) -> None:
         if not self.client.is_closed():
             self.client.close()
+
+
+Client.md2org = Client.markdown2org
